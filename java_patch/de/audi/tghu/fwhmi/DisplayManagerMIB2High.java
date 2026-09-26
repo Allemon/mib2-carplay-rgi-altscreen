@@ -32,10 +32,12 @@ public class DisplayManagerMIB2High extends DisplayManager implements IDisplayLi
     private static final int CTX_MAP_ALT     = 76;   // alt map only
     private static final int CTX_MAP_ALT_KDK = 77;   // alt map + KDK + backings
     private static final int CTX_CARPLAY_NAV = 80;   // CarPlay: maneuver + backing + stock native map
+    private static final int CTX_CARPLAY_VIDEO = 81; // CarPlay: maneuver + backing + AltScreen video (3)
+    private static final int ALTSCREEN_VIDEO = 3;    // AltScreen mirror sink (1440x455 GLES)
     private static final int FIRST_CARPLAY_CONTEXT = 80;   // every stock context id is < this
 
     /* ---- context-table sizing / G24 KDK variants ---- */
-    private static final int DC_SIZE_A5  = 82;    // stock 0..78 + CarPlay 80
+    private static final int DC_SIZE_A5  = 82;    // stock 0..78 + CarPlay 80/81
     private static final int DC_SIZE_G24 = 158;   // stock + the +79 KDK-hoisted variants
     private static final int G24_KDK_CTX_OFFSET = 79;
     private int lastBlockedCarPlayContext = -1;
@@ -174,9 +176,14 @@ public class DisplayManagerMIB2High extends DisplayManager implements IDisplayLi
          *   displayable the stock cluster context 74 already carries.
          *   Displayable 103 is NOT creatable (unregistered DSI id); 101/102 already exist as the 987
          *   Image backings, so we reuse those.  Plane geometry lives in ClusterLayerController; the
-         *   74<->80 switch is driven by ScreenModule (no-nav state is plain stock ctx 74). */
+         *   74<->80 switch is driven by ScreenModule (no-nav state is plain stock ctx 74).
+         *     dc[81] = {98, 101, 102, 3}   AltScreen: the same maneuver/backing planes over the
+         *                                  CarPlay instrument-cluster video that the AltScreen mirror
+         *                                  sidecar draws into displayable 3 (it owns that geometry). */
         if (this.framework.getKombiType() != KOMBI_TYPE_G24) {
             this.dc[CTX_CARPLAY_NAV] = new DisplayContext(CTX_CARPLAY_NAV, new int[]{98, 101, 102, 33});
+            this.dc[CTX_CARPLAY_VIDEO] = new DisplayContext(CTX_CARPLAY_VIDEO,
+                new int[]{98, 101, 102, ALTSCREEN_VIDEO});
         } else {
             this.defineContextsForG24();
         }
@@ -189,7 +196,8 @@ public class DisplayManagerMIB2High extends DisplayManager implements IDisplayLi
         com.luka.carplay.framework.Log.w("DisplayManager",
             "cluster platform: kombiType=" + this.framework.getKombiType()
             + " sysConst(541)=" + this.framework.getSysConst(SYSCONST_KOMBI_VARIANT)
-            + " carplayCtx=" + (this.dc[CTX_CARPLAY_NAV] != null));
+            + " carplayCtx=" + (this.dc[CTX_CARPLAY_NAV] != null)
+            + " altScreenCtx=" + (this.dc[CTX_CARPLAY_VIDEO] != null));
     }
 
     /** G24 has no separate KDK layer, so every stock context gets a "+79" twin with the KDK

@@ -57,6 +57,13 @@ flowchart LR
 - **dc[74]** `CTX_MAP_KDK` (stock) - native map + KDK; the cluster's resting state.
 - **dc[80]** `CTX_CARPLAY_NAV` = `{98, 101, 102, 33}` - our maneuver over the KDK backings over the
   **stock native map**. z-order = array order (index 0 = front).
+- **dc[81]** `CTX_CARPLAY_VIDEO` = `{98, 101, 102, 3}` - the same planes over the CarPlay cluster
+  video that the [MHI2Q-CarPlay-AltScreen](https://github.com/yuedizhibo/MHI2Q-CarPlay-AltScreen)
+  mirror sidecar draws into displayable 3. `ScreenModule` polls its markers
+  (`/tmp/mmi-mirror-active` + `/tmp/mmi-mirror-basevideo.ready`, `AltScreenVideo`) while a session is
+  connected: video -> 81, else nav -> 80, else 74. Without AltScreen neither marker exists and 81 is
+  never selected. The last applied context is written to `/tmp/carplay_cluster.ctx` for status
+  scripts.
 
 `getMappedInternalContext` is identity on MIB2High, so `switchContext(80)` lands on exactly the
 declared context. G24 clusters have no such composition and the feature is disabled there.

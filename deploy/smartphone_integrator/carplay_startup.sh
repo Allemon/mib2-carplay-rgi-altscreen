@@ -46,8 +46,13 @@ LD_PRELOAD= "$H/carplay_monitor.sh" "$DIO_PID" </dev/null >>"$WLOG" 2>&1 &
 MONITOR_PID=$!
 
 # Only dio_manager receives the hook. The monitor and the renderer explicitly
-# clear LD_PRELOAD.
-export LD_PRELOAD="$H/libcarplay_hook.so"
+# clear LD_PRELOAD. A preload already in the child env (the AltScreen universal
+# hook) stays first; ours is appended, and never twice.
+case ":${LD_PRELOAD:-}:" in
+    *":$H/libcarplay_hook.so:"*) ;;
+    *) LD_PRELOAD="${LD_PRELOAD:+$LD_PRELOAD:}$H/libcarplay_hook.so" ;;
+esac
+export LD_PRELOAD
 
 echo "[startup] exec dio_manager pid=$DIO_PID monitor=$MONITOR_PID" >> "$WLOG"
 exec "$DIODIR/dio_manager" "$@"

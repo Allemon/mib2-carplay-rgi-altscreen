@@ -1,14 +1,16 @@
 /*
  * ScreenModule — instrument-cluster (LVDS2 / terminal 1) CONTEXT MANAGER.
  *
- * Owns the CarPlay cluster context and selects between exactly two contexts:
+ * Owns the CarPlay cluster context and selects between exactly three contexts:
  *
+ *   dc[81] = {98 maneuver, 101/102 KDK backing, 3 AltScreen video}     — AltScreen video live
  *   dc[80] = {98 maneuver, 101/102 KDK backing, 33 stock native map}   — nav active
  *   dc[74] = stock cluster                                             — otherwise
  *
  * The maneuver overlay (displayable 98, maneuver_render, transparent when idle)
- * composites over the head unit's OWN native map (displayable 33); there is no
- * CarPlay video plane on the cluster.  Every new CarPlay session leaves the cluster
+ * composites over the head unit's OWN native map (displayable 33), or over the CarPlay
+ * cluster video when the AltScreen mirror sidecar has published it on displayable 3
+ * (see AltScreenVideo; polled by the worker).  Every new CarPlay session leaves the cluster
  * on stock (74); we switch to ctx 80 once RouteGuidance has started the RGI
  * presentation through BAP (setNavActive(true)), and drop back to 74 once VC withdraws KDK visibility (Fct44)
  * after guidance ends, and on disconnect.
@@ -36,6 +38,7 @@ public final class ScreenModule implements Module {
 
     public static final int TERMINAL_CLUSTER  = 1;    /* LVDS2 */
     public static final int CTX_CLUSTER       = 80;   /* nav active: {98 maneuver, 101/102 backing, 33 stock map} */
+    public static final int CTX_CLUSTER_VIDEO = 81;   /* AltScreen video: {98 maneuver, 101/102 backing, 3 CarPlay video} */
     public static final int CTX_STOCK_CLUSTER = 74;
     private static final int CTX_BOUNCE       = 72;   /* kombi map — never ours; forces a real ctx change */
     private static final int BOUNCE_SLEEP_MS  = 180;  /* preContextSwitchHook settle (proven driver) */
@@ -73,24 +76,44 @@ public final class ScreenModule implements Module {
         catch (Throwable t) { return true; }  /* only an explicit G24 value disables the feature */
     }
 
-    /* desiredCtx = target published by start()/stop()/setNavActive(); currentCtx = what the worker last
-     * applied.  Both guarded by LOCK; the single worker switches whenever they differ.
-     * desiredCtx is a pure function of these two (guarded by LOCK):
-     *   !connected         -> 74 (stock)
-     *   connected, no nav  -> 74 (stock native map, no maneuver overlay)
-     *   connected, nav     -> 80 (stock native map + backing + maneuver) */
+    /* desiredCtx = target published by start()/stop()/setNavActive()/the video poll; currentCtx = what
+     * the worker last applied.  Both guarded by LOCK; the single worker switches whenever they differ.
+     * desiredCtx is a pure function of these three (guarded by LOCK):
+     *   !connected                -> 74 (stock)
+     *   connected, AltScreen video -> 81 (CarPlay video + backing + maneuver)
+     *   connected, nav            -> 80 (stock native map + backing + maneuver)
+     *   connected, otherwise      -> 74 (stock native map, no maneuver overlay) */
     private static int desiredCtx = CTX_STOCK_CLUSTER;
     private static int currentCtx = -1;
     private static volatile boolean connected = false;
     private static volatile boolean navActive = false;
+    private static volatile boolean altScreenVideo = false;
     private static boolean navHidePending;
 
-    /** Recompute desiredCtx from connected/navActive and wake the worker. Caller must NOT hold LOCK. */
+    static int contextFor(boolean connected, boolean video, boolean nav) {
+        if (!connected) return CTX_STOCK_CLUSTER;
+        if (video) return CTX_CLUSTER_VIDEO;
+        return nav ? CTX_CLUSTER : CTX_STOCK_CLUSTER;
+    }
+
+    /** Recompute desiredCtx and wake the worker. Caller must NOT hold LOCK. */
     private static void republish() {
         synchronized (LOCK) {
-            desiredCtx = (connected && navActive) ? CTX_CLUSTER : CTX_STOCK_CLUSTER;
+            desiredCtx = contextFor(connected, altScreenVideo, navActive);
             LOCK.notifyAll();
         }
+    }
+
+    /** True while displayable 3 carries the AltScreen CarPlay video (ctx 81 target). */
+    public static boolean isAltScreenVideo() { return altScreenVideo; }
+
+    /** Poll the AltScreen markers; only the switch worker calls this, never under LOCK. */
+    private static void refreshAltScreenVideo() {
+        boolean ready = connected && com.luka.carplay.cluster.AltScreenVideo.isReady();
+        if (ready == altScreenVideo) return;
+        altScreenVideo = ready;
+        Log.i(TAG, "AltScreen video " + (ready ? "ready -> ctx " + CTX_CLUSTER_VIDEO : "gone"));
+        republish();
     }
 
     /** Presentation latch, not merely route intent.  RouteGuidance may set true only after the
@@ -263,20 +286,23 @@ public final class ScreenModule implements Module {
     private void switchLoop() {
         contextWriterThread = Thread.currentThread();
         while (true) {
+            refreshAltScreenVideo();
             int target; IDisplayManager d; boolean reconcileOnly = false;
             synchronized (LOCK) {
                 while (dm == null) {
                     try { LOCK.wait(); } catch (InterruptedException e) { /* persistent worker */ }
                 }
                 if (desiredCtx == currentCtx) {
+                    /* A connected session keeps a timed wait even on 74: the AltScreen markers are
+                     * files, so the video edge is only seen by polling. */
                     try {
-                        if (desiredCtx == CTX_CLUSTER)
+                        if (desiredCtx >= CTX_CLUSTER || connected)
                             LOCK.wait(CONTEXT_RECONCILE_MS);
                         else
                             LOCK.wait();
                     } catch (InterruptedException e) { /* persistent worker */ }
                     if (dm == null || desiredCtx != currentCtx) continue;
-                    if (desiredCtx != CTX_CLUSTER) continue;
+                    if (desiredCtx < CTX_CLUSTER) continue;
                     reconcileOnly = true;
                 }
                 target = desiredCtx; d = dm;
@@ -304,6 +330,24 @@ public final class ScreenModule implements Module {
                 continue;
             }
             applySwitch(target, d);
+        }
+    }
+
+    /* Last applied cluster context for on-unit status scripts (AltScreen STATUS reads it);
+     * INFO logging is off by default, so the log alone cannot answer "which ctx is live". */
+    private static final String CTX_STATE_FILE = "/tmp/carplay_cluster.ctx";
+
+    private static void publishCtxState(int ctx) {
+        java.io.FileOutputStream out = null;
+        try {
+            out = new java.io.FileOutputStream(CTX_STATE_FILE);
+            out.write(("ctx=" + ctx + "\nvideo=" + (altScreenVideo ? 1 : 0)
+                + "\nnav=" + (navActive ? 1 : 0) + "\ntime_ms=" + System.currentTimeMillis()
+                + "\n").getBytes());
+        } catch (Throwable t) {
+            /* diagnostics only */
+        } finally {
+            if (out != null) try { out.close(); } catch (Throwable t) { }
         }
     }
 
@@ -356,6 +400,7 @@ public final class ScreenModule implements Module {
              * navActive edge cannot leave planes 98/101/102 at their previous opacity. */
             com.luka.carplay.cluster.ClusterLayerController.reapply();
             Log.i(TAG, "cluster -> ctx " + ctx + " (active=" + clusterActive + ")");
+            publishCtxState(ctx);
         } catch (Throwable t) {
             Log.w(TAG, "switch(" + ctx + ") failed: " + t);
             synchronized (LOCK) { currentCtx = -1; }

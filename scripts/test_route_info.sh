@@ -28,6 +28,7 @@ CLASSPATH="$PATCH_JAR:$STOCK_JAR:$TOOLS_DIR/libs/org.osgi.framework-1.10.0.jar:$
     "$PROJECT_DIR/tests/ManeuverParityTest.java" \
     "$PROJECT_DIR/tests/RendererViewportTest.java" \
     "$PROJECT_DIR/tests/ClusterKdkSyncTest.java" \
+    "$PROJECT_DIR/tests/AltScreenContextTest.java" \
     "$PROJECT_DIR/tests/ClusterKdkBapChainTest.java" \
     "$PROJECT_DIR/tests/ClusterKdkRendererLifecycleTest.java" \
     "$PROJECT_DIR/tests/LaneGuidanceTransportTest.java" \
@@ -53,6 +54,7 @@ CLASSPATH="$PATCH_JAR:$STOCK_JAR:$TOOLS_DIR/libs/org.osgi.framework-1.10.0.jar:$
 "$JDK_DIR/bin/java" -Xverify:none -cp "$TEST_DIR:$CLASSPATH" ManeuverParityTest
 "$JDK_DIR/bin/java" -Xverify:none -cp "$TEST_DIR:$CLASSPATH" RendererViewportTest
 "$JDK_DIR/bin/java" -Xverify:none -cp "$TEST_DIR:$CLASSPATH" ClusterKdkSyncTest
+"$JDK_DIR/bin/java" -Xverify:none -cp "$TEST_DIR:$CLASSPATH" AltScreenContextTest
 "$JDK_DIR/bin/java" -Xverify:none -cp "$TEST_DIR:$CLASSPATH" ClusterKdkBapChainTest
 "$JDK_DIR/bin/java" -Xverify:none -cp "$TEST_DIR:$CLASSPATH" ClusterKdkRendererLifecycleTest
 
