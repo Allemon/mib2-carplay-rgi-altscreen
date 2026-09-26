@@ -43,3 +43,6 @@ script
 script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_layout_noeta.sh"
    label   "Cluster map layout: no ETA"
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/dump_cluster_h264.sh"
+   label   "Dump cluster video to SD (diagnostic)"

@@ -39,6 +39,7 @@ The core display pipeline, watermark removal, aspect-ratio correction, steering-
 This package integrates upstream **[MHI2Q-CarPlay-AltScreen](https://github.com/yuedizhibo/MHI2Q-CarPlay-AltScreen)** and **[mib2q-carplay-rgi](https://github.com/luka-dev/mib2q-carplay-rgi)** with local improvements:
 
 - **CarPlay AltScreen on Virtual Cockpit:** Native secondary CarPlay stream (Apple Maps, Google Maps) drawn on displayable 3 (Context 81).
+- **Smooth 30 fps Cluster Video:** Upstream showed ~15 fps (the frame tap read back every second decoded frame; the mirror sidecar polled every 20 ms on a fixed 33 ms period). `build_sd.sh` patches both binaries (`tools/patch_altscreen_fps.py`); the cluster now shows 28-30 of the iPhone's 30 fps.
 - **Steering-Wheel Roller Zoom:** Scrolling the left steering-wheel roller sends the factory AirPlay `changeMapZoomLevel` command to iOS (`CRSUIClusterZoomAction`), zooming the CarPlay cluster map directly (away = zoom out, towards = zoom in). The native map underneath continues to zoom simultaneously.
 - **Cluster Map Layout Selector (Marker Centering):** GEM menu provides four selectable layouts (`AltScreen default`, `maneuver card on top`, `maneuver card on the right`, `no ETA`) to balance map layout and vehicle marker centering.
 - **Integrated Route Guidance (RGI):** Turn-by-turn 3D maneuver arrows, distance to turn, remaining time, route text, and HUD integration seamlessly composited over the CarPlay video stream in Display Context 81 (`{98, 101, 102, 3}`).

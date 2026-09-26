@@ -6,6 +6,7 @@
 #   STOCK_JAR=MU1329-base.jar ./scripts/build_sd.sh              # build all, stage build/sd/
 #   SKIP_BUILD=1 ./scripts/build_sd.sh                           # reuse build/ artifacts
 #   SD=/Volumes/SD32 STOCK_JAR=MU1329-base.jar ./scripts/build_sd.sh   # also sync onto the card
+#   ALTSCREEN_FULL_FPS=0 ./scripts/build_sd.sh                   # stock AltScreen video binaries (15 fps)
 #
 # Inputs:  altscreen/   the AltScreen SD tree (scripts, mirror sidecar, universal preload,
 #                       GEM menu, MIB2 Toolbox) with @CARPLAY_JAR_SIZE@/@CARPLAY_JAR_CKSUM@
@@ -45,6 +46,28 @@ case "$OUT" in "$PROJECT_DIR"/build/*) rm -rf "$OUT" ;; *) [ ! -e "$OUT" ] || { 
 mkdir -p "$OUT"
 (cd "$SRC" && tar --exclude=.DS_Store --exclude='._*' -cf - .) | (cd "$OUT" && tar -xf -)
 rm -f "$OUT/SHA256SUMS-SD.list"
+
+# AltScreen reads back only every second decoded cluster frame and its mirror sidecar
+# polls every 20 ms with a fixed 33 ms period (30 fps in, 15-22 fps on the VC);
+# tools/patch_altscreen_fps.py fixes both binaries.
+ALTS_LIB=Toolbox/carplay_alt_screen/universal/libcarplay_altscreen.so
+ALTS_MIRROR_DIR=Toolbox/carplay_alt_screen/mirror_display/release
+if [ "${ALTSCREEN_FULL_FPS:-1}" = 1 ]; then
+    for f in "$ALTS_LIB" "$ALTS_MIRROR_DIR/carplay-alt111-mirror-display"; do
+        python3 "$PROJECT_DIR/tools/patch_altscreen_fps.py" "$SRC/$f" "$OUT/$f" >/dev/null
+    done
+    # Keep the sidecar's own checksum list true to what ships.
+    if command -v sha256sum >/dev/null 2>&1; then MSHA="sha256sum"; else MSHA="shasum -a 256"; fi
+    new_sum=$(cd "$OUT/$ALTS_MIRROR_DIR" && $MSHA carplay-alt111-mirror-display | cut -d' ' -f1)
+    sed -e "s/^[0-9a-f]\{64\}  carplay-alt111-mirror-display\$/$new_sum  carplay-alt111-mirror-display/" \
+        "$OUT/$ALTS_MIRROR_DIR/SHA256SUMS" > "$OUT/$ALTS_MIRROR_DIR/SHA256SUMS.tmp"
+    mv "$OUT/$ALTS_MIRROR_DIR/SHA256SUMS.tmp" "$OUT/$ALTS_MIRROR_DIR/SHA256SUMS"
+    (cd "$OUT/$ALTS_MIRROR_DIR" && $MSHA -c SHA256SUMS >/dev/null) \
+        || { echo "ERROR: mirror SHA256SUMS does not match the patched sidecar"; exit 1; }
+    ALTS_FPS="30 fps (every frame read back, 4 ms sidecar poll)"
+else
+    ALTS_FPS="stock (15 fps)"
+fi
 
 # RGI native half, installed by Toolbox/scripts/rgi_companion.sh from AltScreen INSTALL.
 mkdir -p "$OUT/$RGI_DIR"
@@ -89,6 +112,7 @@ if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"; else SHA="shasum 
   $SHA -c SHA256SUMS-SD.txt >/dev/null )
 
 echo "  jar: $JAR_DEST size=$JAR_SIZE cksum=$JAR_CKSUM"
+echo "  altscreen video: $ALTS_FPS"
 echo "  rgi: $RGI_DIR ($(ls "$OUT/$RGI_DIR" | wc -l | tr -d ' ') files)"
 echo "  sums: SHA256SUMS-SD.txt ($(wc -l < "$OUT/SHA256SUMS-SD.txt" | tr -d ' ') files, verified)"
 

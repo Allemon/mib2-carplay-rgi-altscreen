@@ -37,6 +37,7 @@ Toolbox/scripts/cluster_layout_default.sh
 Toolbox/scripts/cluster_layout_noeta.sh
 Toolbox/scripts/cluster_layout_right.sh
 Toolbox/scripts/cluster_layout_top.sh
+Toolbox/scripts/dump_cluster_h264.sh
 Toolbox/scripts/finish_mmi_cockpit_carplay_test.sh
 Toolbox/scripts/force_start_mmi_cockpit_carplay_rx_test.sh
 Toolbox/scripts/install_mmi_cockpit_carplay_rx.sh
