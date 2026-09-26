@@ -43,3 +43,9 @@ script
 script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_layout_noeta.sh"
    label   "Cluster map layout: no ETA"
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_fps_30.sh"
+   label   "Cluster refresh: 30 fps (default)"
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_fps_60.sh"
+   label   "Cluster refresh: 60 fps (experimental)"

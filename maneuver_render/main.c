@@ -29,6 +29,14 @@
 
 #define TARGET_FPS     30
 #define FRAME_TIME_NS  (1000000000L / TARGET_FPS)
+
+/* AltScreen CarPlay cluster video (MHI2Q-CarPlay-AltScreen mirror sidecar): its launcher
+ * keeps the demand marker and the sidecar publishes the ready marker after its first
+ * present; ScreenModule/AltScreenVideo use the same pair to select ctx 81. */
+#define ALTSCREEN_ACTIVE_MARKER "/tmp/mmi-mirror-active"
+#define ALTSCREEN_READY_MARKER  "/tmp/mmi-mirror-basevideo.ready"
+#define ALTSCREEN_FPS           15
+#define ALTSCREEN_FRAME_TIME_NS (1000000000L / ALTSCREEN_FPS)
 #include "gl_compat.h"
 #include "render.h"
 #include "arrow_progress.h"
@@ -61,6 +69,23 @@ static int timespec_elapsed_at_least(const struct timespec *now,
     dns = now->tv_nsec - last->tv_nsec;
     return dns >= nanoseconds;
 }
+
+#ifdef PLATFORM_QNX
+/* AltScreen video state, re-read from its markers at most once per second. */
+static int altscreen_video_up(const struct timespec *now) {
+    static struct timespec checked = {0, 0};
+    static int up = 0;
+    if (timespec_elapsed_at_least(now, &checked, 1, 0)) {
+        int was = up;
+        checked = *now;
+        up = access(ALTSCREEN_ACTIVE_MARKER, F_OK) == 0 && access(ALTSCREEN_READY_MARKER, F_OK) == 0;
+        if (up != was)
+            fprintf(stderr, "engine: AltScreen video %s -> active frames %d fps\n",
+                    up ? "up" : "gone", up ? ALTSCREEN_FPS : TARGET_FPS);
+    }
+    return up;
+}
+#endif
 
 /* ================================================================
  * Engine state machine
@@ -988,7 +1013,23 @@ int main(int argc, char **argv) {
             }
         }
 #else
-        (void)t_start;
+        /* AltScreen shares the cluster GPU: its mirror sidecar presents the CarPlay cluster
+         * video at ~15 fps and, measured on MU1329, skipped ~18% of its decoded frames while
+         * this loop drew active frames at 30 fps.  While that video is up, pace ACTIVE frames
+         * to its rate; animations are time-based, so they only step coarser. */
+        if (rendered_this_frame && altscreen_video_up(&t_start)) {
+            struct timespec t_end;
+            clock_gettime(CLOCK_MONOTONIC, &t_end);
+            long elapsed_ns = (t_end.tv_sec - t_start.tv_sec) * 1000000000L
+                            + (t_end.tv_nsec - t_start.tv_nsec);
+            long sleep_ns = ALTSCREEN_FRAME_TIME_NS - elapsed_ns;
+            if (sleep_ns > 0) {
+                struct timespec ts = { sleep_ns / 1000000000L, sleep_ns % 1000000000L };
+                watch_stage(WATCH_SLEEP);
+                nanosleep(&ts, NULL);
+                watch_stage(WATCH_IDLE);
+            }
+        }
 #endif
 
 #ifdef CR_DIAG_FRAME_LOG
