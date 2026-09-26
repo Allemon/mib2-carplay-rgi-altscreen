@@ -76,6 +76,10 @@ features below follow it automatically.
 
 - **AltScreen: CarPlay cluster video on the Virtual Cockpit.** Renders the second-screen CarPlay video
   stream (Apple Maps full cluster map) directly inside the Audi Virtual Cockpit via displayable 3.
+- **Smooth 30 fps cluster video.** Upstream AltScreen showed ~15 fps: its frame tap read back only
+  every second decoded frame, and the mirror sidecar polled every 20 ms on a fixed 33 ms period.
+  The SD build patches both binaries, so the cluster shows 28-30 of the iPhone's 30 fps
+  (car-verified, `MIRROR_PRESENT_FPS` in STATUS).
 - **Corrected aspect ratio (no distortion).** The mirror sidecar was rebuilt with corrected 1:1 aspect ratio
   geometry (clean bottom crop) so the CarPlay cluster video is not stretched or squashed on the Virtual Cockpit.
 - **Clean OEM look (watermark removed & Audi logo).** Upstream promotional watermarks are removed
@@ -123,6 +127,7 @@ features below follow it automatically.
 | `install_MoreIncredibleBash/`, `uninstall_MoreIncredibleBash/`, `logging_MoreIncredibleBash/` | M.I.B. custom scripts that install / remove a staged release / collect logs |
 | `altscreen/` | AltScreen SD tree (CarPlay video on the VC) with RGI wired into its installer; `scripts/build_sd.sh` turns it into a card |
 | `deploy/altscreen/` | The AltScreen variant of the SI carplay child (`CARPLAY_PRELOAD_EXTRA`) |
+| `tools/` | AltScreen 30 fps binary patches (`patch_altscreen_fps.py`) and the cluster H.264 dump analyser |
 | `scripts/` | Docker build entry points (Java / hook / renderer / SD card) and host test runners |
 | `tests/` | Host tests (C, Java, Python) for the hook, Java bridge and renderer |
 | `toolchain/qnx65-abi/` | QNX Screen ABI headers used only for cross-compilation |
@@ -189,10 +194,16 @@ video); without it route guidance falls back to ctx 80 over the stock map
 The steering-wheel roller zooms the CarPlay cluster map as it zooms the native one
 ([steering-wheel](docs/input/steering-wheel.md)); the GEM menu's **Cluster map layout** entries pick
 the iPhone's cluster presentation (applied on the next phone connect).
+The build also patches AltScreen's `libcarplay_altscreen.so` and mirror sidecar for 30 fps
+cluster video (`tools/patch_altscreen_fps.py`; each patch checks the exact upstream binary first);
+`ALTSCREEN_FULL_FPS=0` ships them unchanged. GEM **Dump cluster video to SD (diagnostic)** saves
+the last ~4 MB of the cluster H.264 stream to `MMI-Cockpit-Carplay/logs/h264/`;
+`python3 tools/h264_ring_analyze.py <file>` shows what the iPhone sent.
 End-to-end check of the package (needs an AltScreen stock backup from a unit):
 `FIXTURE=<card>/MMI-Cockpit-Carplay/backup ./scripts/test_altscreen_e2e.sh`.
 
 #### Key enhancements over upstream AltScreen:
+- **30 fps instead of 15:** the frame tap reads back every decoded frame and the mirror sidecar polls every 4 ms with a one-vsync minimum period (binary patches applied by `build_sd.sh`).
 - **Steering-wheel cluster map zoom:** Each roller click sends `changeMapZoomLevel` directly to iOS via AirPlay (`CRSUIClusterZoomAction`); scrolling away zooms out, scrolling towards zooms in.
 - **Cluster map layout selector (vehicle marker centering):** GEM menu provides four selectable layouts (`AltScreen default`, `maneuver card on top`, `maneuver card on the right`, `no ETA`) to balance map layout and vehicle marker centering without obscuring navigation.
 - **Corrected aspect ratio & projection:** Instead of stretching or squashing the image, the mirror sidecar is rebuilt with a 1:1 aspect ratio and clean bottom crop so that maps and road geometry display with natural proportions.
