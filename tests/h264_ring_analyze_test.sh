@@ -24,15 +24,17 @@ D=$(python3 "$ROOT/tools/h264_ring_analyze.py" "$T/d.bin")
 echo "$D" | grep -q "inferred from slice headers: {'log2_max_frame_num': $FN," \
     && echo "$D" | grep -Eq "frame_num steps between packets: \{1: [0-9]+(, [0-9]+: 1)?\}" \
     || { echo "FAIL no-sps (real log2_max_frame_num=$FN)"; echo "$D"; exit 1; }
-# Full-fps patch: stock lib -> patched, idempotent, anything else refused.
-L="$ROOT/altscreen/Toolbox/carplay_alt_screen/universal/libcarplay_altscreen.so"
-if [ -s "$L" ]; then
-    P="$ROOT/tools/patch_altscreen_full_fps.py"
-    [ "$(python3 "$P" --check "$L")" = stock ] || { echo "FAIL patch: repo lib is not stock"; exit 1; }
-    python3 "$P" "$L" "$T/p.so" >/dev/null && [ "$(python3 "$P" --check "$T/p.so")" = patched ] \
-        && [ "$(cmp -l "$L" "$T/p.so" | wc -l | tr -d ' ')" = 4 ] \
-        && python3 "$P" "$T/p.so" "$T/p2.so" >/dev/null && cmp -s "$T/p.so" "$T/p2.so" \
-        || { echo "FAIL patch"; exit 1; }
-    ! python3 "$P" "$T/d.bin" "$T/x.so" 2>/dev/null || { echo "FAIL patch accepted a foreign file"; exit 1; }
-fi
-echo "h264_ring_analyze_test: two-slice pictures, one per packet, non-reference B-frames, no-SPS inference, full-fps patch PASS"
+# 30 fps patches: each stock binary -> patched, idempotent, anything else refused.
+P="$ROOT/tools/patch_altscreen_fps.py"
+A="$ROOT/altscreen/Toolbox/carplay_alt_screen"
+for pair in "universal/libcarplay_altscreen.so 4" "mirror_display/release/carplay-alt111-mirror-display 24"; do
+    set -- $pair; L="$A/$1"; changed=$2
+    [ -s "$L" ] || continue
+    [ "$(python3 "$P" --check "$L")" = stock ] || { echo "FAIL patch: $1 is not stock"; exit 1; }
+    python3 "$P" "$L" "$T/p" >/dev/null && [ "$(python3 "$P" --check "$T/p")" = patched ] \
+        && [ "$(cmp -l "$L" "$T/p" | wc -l | tr -d ' ')" -le "$changed" ] \
+        && python3 "$P" "$T/p" "$T/p2" >/dev/null && cmp -s "$T/p" "$T/p2" \
+        || { echo "FAIL patch: $1"; exit 1; }
+done
+! python3 "$P" "$T/d.bin" "$T/x" 2>/dev/null || { echo "FAIL patch accepted a foreign file"; exit 1; }
+echo "h264_ring_analyze_test: two-slice pictures, one per packet, non-reference B-frames, no-SPS inference, 30 fps patches PASS"
