@@ -96,7 +96,11 @@ if [ -n "${SD:-}" ]; then
     [ -d "$SD" ] || { echo "ERROR: SD=$SD is not a directory"; exit 1; }
     [ -d "$SD/MMI-Cockpit-Carplay" ] || echo "WARN: $SD has no MMI-Cockpit-Carplay/ (no AltScreen stock backups on this card yet)"
     echo "=== sync -> $SD (MMI-Cockpit-Carplay/ untouched, nothing deleted) ==="
+    STAMP="$PROJECT_DIR/build/.sd-sync-stamp"; : > "$STAMP"
     (cd "$OUT" && tar -cf - .) | (cd "$SD" && tar -xf -)
+    # macOS stores new files' xattrs as AppleDouble ._* on FAT; drop the ones this copy made.
+    find "$SD" -path "$SD/MMI-Cockpit-Carplay" -prune -o -type f -name '._*' -newer "$STAMP" -exec rm -f {} + 2>/dev/null || true
+    rm -f "$STAMP"
     sync
     (cd "$SD" && $SHA -c SHA256SUMS-SD.txt >/dev/null) && echo "  card verified against SHA256SUMS-SD.txt"
 fi
