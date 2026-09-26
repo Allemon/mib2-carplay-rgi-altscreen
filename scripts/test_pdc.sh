@@ -7,7 +7,7 @@ JDK="$TOOLS_DIR/jvms/zulu8.78.0.19-ca-jdk8.0.412-macosx_aarch64/zulu-8.jdk/Conte
 # combined retains executable stock accessors. final's decompiler-only
 # AccessInline pass breaks private accesses in stock anonymous classes;
 # audit_java_stock.sh separately verifies linkage against both inventories.
-STOCK="$TOOLS_DIR/out/MU1316-combined.jar"
+STOCK="$TOOLS_DIR/out/${STOCK_JAR:-MU1316-combined.jar}"
 LIBS="$TOOLS_DIR/libs/org.osgi.framework-1.10.0.jar:$TOOLS_DIR/libs/org.osgi.util.tracker-1.5.4.jar"
 PATCH="${PDC_PATCH_JAR:-$PROJECT_DIR/build/carplay_hook.jar}"
 ASM="$TOOLS_DIR/tools/uninline/lib/asm-9.7.jar:$TOOLS_DIR/tools/uninline/lib/asm-tree-9.7.jar"

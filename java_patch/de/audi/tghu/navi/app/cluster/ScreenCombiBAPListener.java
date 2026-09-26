@@ -14,8 +14,9 @@ import de.audi.tghu.navi.app.map.MapManager;
  *
  * VC's Fct44 (KDK visibility) and Fct54 (map presentation/stage) are forwarded to
  * the layer controller before stock acknowledges them.  The steering-wheel roller
- * is NOT intercepted: the cluster shows the head unit's own native map (with our
- * maneuver overlay on top), so setMapScale() keeps zooming it exactly as stock.
+ * (setMapScale) keeps zooming the head unit's own cluster map exactly as stock; while
+ * the AltScreen CarPlay video covers that map, each step also zooms the iPhone's
+ * cluster map (AltScreenCluster).
  */
 public final class ScreenCombiBAPListener extends CombiBAPListener {
     public ScreenCombiBAPListener(
@@ -48,6 +49,11 @@ public final class ScreenCombiBAPListener extends CombiBAPListener {
     protected void updateMapVisibility() {
         com.luka.carplay.cluster.ClusterLayerController.onVcVisibility(this.supplementaryMapViewVisible);
         super.updateMapVisibility();
+    }
+
+    public void setMapScale(int steps) {
+        com.luka.carplay.cluster.AltScreenCluster.onMapScaleSteps(steps);
+        super.setMapScale(steps);
     }
 
     public void setMapPresentation(boolean largeMapView, boolean leftMenu, boolean rightMenu) {

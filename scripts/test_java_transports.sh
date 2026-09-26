@@ -16,14 +16,14 @@ trap 'rm -rf "$TEST_DIR"' EXIT
 
 # NAVSD INITIALIZING/READY must pass straight through the RGI gate
 # (the altscreen INITIALIZING takeover and AltScreenStartupTest do not apply here).
-STOCK_JAR="$PROJECT_DIR/../../Tools/jxe2jar/out/MU1316-final.jar"
+STOCK_FINAL="$PROJECT_DIR/../../Tools/jxe2jar/out/${STOCK_JAR:-MU1316-final.jar}"
 mkdir -p "$TEST_DIR/nav-init"
 "$TEST_JDK/bin/javac" -encoding UTF-8 \
-    -cp "$PROJECT_DIR/build/carplay_hook.jar:$STOCK_JAR" \
+    -cp "$PROJECT_DIR/build/carplay_hook.jar:$STOCK_FINAL" \
     -d "$TEST_DIR/nav-init" \
     "$PROJECT_DIR/tests/GatedCombiServiceInitStateTest.java"
 "$TEST_JDK/bin/java" \
-    -cp "$TEST_DIR/nav-init:$PROJECT_DIR/build/carplay_hook.jar:$STOCK_JAR" \
+    -cp "$TEST_DIR/nav-init:$PROJECT_DIR/build/carplay_hook.jar:$STOCK_FINAL" \
     com.luka.carplay.rgd.GatedCombiServiceInitStateTest
 
 # Exercise the actual lifecycle worker against controllable external modules.

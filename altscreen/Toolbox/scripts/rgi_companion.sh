@@ -161,6 +161,7 @@ remove_files(){
         rm -f "$HOOKS/$name" "$HOOKS/$name.rgi-new."* 2>/dev/null
         [ ! -e "$HOOKS/$name" ] || return 1
     done
+    rm -f "$HOOKS/cluster_ui.url"   # GEM "cluster layout" choice
     rmdir "$HOOKS" 2>/dev/null || true
 }
 

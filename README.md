@@ -169,6 +169,9 @@ reboot. While the video runs the cluster uses ctx 81 (`{98, 101, 102, 3}`, maneu
 video); without it route guidance falls back to ctx 80 over the stock map
 ([display-contexts](docs/cluster/display-contexts.md)). **STATUS** reports `DIO_PRELOAD_ALTSCREEN`,
 `DIO_PRELOAD_RGI`, `RGI_*` and the live context. **RESTORE ORIGINAL** removes both.
+The steering-wheel roller zooms the CarPlay cluster map as it zooms the native one
+([steering-wheel](docs/input/steering-wheel.md)); the GEM menu's **Cluster map layout** entries pick
+the iPhone's cluster presentation (applied on the next phone connect).
 End-to-end check of the package (needs an AltScreen stock backup from a unit):
 `FIXTURE=<card>/MMI-Cockpit-Carplay/backup ./scripts/test_altscreen_e2e.sh`.
 
