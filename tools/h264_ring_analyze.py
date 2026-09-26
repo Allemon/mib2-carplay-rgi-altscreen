@@ -114,6 +114,48 @@ def parse_slice(nal, sps):
     return s
 
 
+def infer_sps(payloads):
+    """No SPS in the ring (it went by before the dump window): find the frame_num width as
+    the k whose leading k bits after pps_id step by +1 (mod 2^k) between consecutive
+    packets, then the POC-lsb width after it the same way (step 2 per frame).  Assumes a
+    progressive stream with poc_type 0, which is what the iPhone sends."""
+    raws = []
+    for p in payloads:
+        for n in nals_of(p):
+            if n and (n[0] & 0x1f) in (1, 5):
+                b = Bits(rbsp(n))
+                try:
+                    b.ue(); b.ue(); b.ue()
+                    raws.append(b.u(40))
+                except (EOFError, ValueError):
+                    raws.append(None)
+                break
+    pairs = [(x, y) for x, y in zip(raws, raws[1:]) if x is not None and y is not None]
+    if len(pairs) < 8:
+        return None
+
+    def best(shift, step):
+        score, width = 0.0, None
+        for k in range(4, 17):
+            if shift + k > 40:
+                break
+            m = (1 << k) - 1
+            hit = sum(1 for x, y in pairs
+                      if (((y >> (40 - shift - k)) & m) - ((x >> (40 - shift - k)) & m)) & m == step)
+            if hit / len(pairs) > score:
+                score, width = hit / len(pairs), k
+        return width, score
+
+    fn_bits, fn_score = best(0, 1)
+    if not fn_bits or fn_score < 0.8:
+        return None
+    sps = {"log2_max_frame_num": fn_bits, "frame_mbs_only": 1, "poc_type": 2, "inferred": True}
+    poc_bits, poc_score = best(fn_bits, 2)
+    if poc_bits and poc_score >= 0.8:
+        sps.update(poc_type=0, log2_max_poc_lsb=poc_bits)
+    return sps
+
+
 def nals_of(payload):
     """AVCC with 4-byte lengths; fall back to Annex-B start codes."""
     out, i = [], 0
@@ -180,12 +222,18 @@ def main():
                     sps = parse_sps(n)
                 except (EOFError, ValueError):
                     pass
-    print("SPS:", sps if sps else "not in ring (frame_num/poc unavailable)")
+    if not sps:
+        sps = infer_sps(payloads)
+        print("SPS: not in ring; inferred from slice headers:" if sps else
+              "SPS: not in ring (frame_num/poc unavailable)", sps or "")
+    else:
+        print("SPS:", sps)
 
     per_type = collections.Counter()
     new_pic = slices_total = nonref_pkts = 0
     pics_per_pkt = collections.Counter()
     rows = []
+    frame_nums = []
     for idx, p in enumerate(payloads):
         kinds, sl = [], []
         for n in nals_of(p):
@@ -202,6 +250,8 @@ def main():
                 s["ref"] = ref
                 sl.append(s)
         slices_total += len(sl)
+        if sl and "frame_num" in sl[0]:
+            frame_nums.append(sl[0]["frame_num"])
         starts = sum(1 for s in sl if s["first_mb"] == 0)
         pics_per_pkt[starts] += 1
         new_pic += starts
@@ -219,6 +269,11 @@ def main():
     print(f"slices: {slices_total}  pictures started (first_mb==0): {new_pic}  "
           f"pictures per packet: {dict(sorted(pics_per_pkt.items()))}")
     print(f"packets whose slices are all non-reference (nal_ref_idc=0): {nonref_pkts}")
+    if len(frame_nums) > 1:
+        m = 1 << sps["log2_max_frame_num"]
+        steps = collections.Counter((y - x) % m for x, y in zip(frame_nums, frame_nums[1:]))
+        print(f"frame_num steps between packets: {dict(sorted(steps.items()))} "
+              f"(1 = consecutive frame, >1 = frames the sender skipped)")
     ratio = new_pic / len(payloads) if payloads else 0
     print(f"=> {ratio:.2f} new pictures per packet")
     if ratio < 0.6:

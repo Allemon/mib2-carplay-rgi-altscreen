@@ -11,6 +11,8 @@ for n,s in enumerate(starts):
     e=starts[n+1]-3 if n+1<len(starts) else len(data)
     if n+1<len(starts) and data[e-1]==0: e-=1
     nals.append(data[s:e])
+if mode=='no_sps':   # SPS/PPS went by before the dump window
+    nals=[x for x in nals if (x[0]&0x1f) not in (7,8)]; mode='per_picture'
 avcc=lambda ns: b''.join(struct.pack('>I',len(x))+x for x in ns)
 pkts=[]; cur=[]
 for x in nals:

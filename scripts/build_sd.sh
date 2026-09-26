@@ -6,6 +6,7 @@
 #   STOCK_JAR=MU1329-base.jar ./scripts/build_sd.sh              # build all, stage build/sd/
 #   SKIP_BUILD=1 ./scripts/build_sd.sh                           # reuse build/ artifacts
 #   SD=/Volumes/SD32 STOCK_JAR=MU1329-base.jar ./scripts/build_sd.sh   # also sync onto the card
+#   ALTSCREEN_FULL_FPS=0 ./scripts/build_sd.sh                   # keep AltScreen's 15 fps frame tap
 #
 # Inputs:  altscreen/   the AltScreen SD tree (scripts, mirror sidecar, universal preload,
 #                       GEM menu, MIB2 Toolbox) with @CARPLAY_JAR_SIZE@/@CARPLAY_JAR_CKSUM@
@@ -45,6 +46,16 @@ case "$OUT" in "$PROJECT_DIR"/build/*) rm -rf "$OUT" ;; *) [ ! -e "$OUT" ] || { 
 mkdir -p "$OUT"
 (cd "$SRC" && tar --exclude=.DS_Store --exclude='._*' -cf - .) | (cd "$OUT" && tar -xf -)
 rm -f "$OUT/SHA256SUMS-SD.list"
+
+# AltScreen reads back only every second decoded cluster frame (30 fps in, 15 fps on the
+# VC); tools/patch_altscreen_full_fps.py makes it publish all of them.
+ALTS_LIB=Toolbox/carplay_alt_screen/universal/libcarplay_altscreen.so
+if [ "${ALTSCREEN_FULL_FPS:-1}" = 1 ]; then
+    python3 "$PROJECT_DIR/tools/patch_altscreen_full_fps.py" "$SRC/$ALTS_LIB" "$OUT/$ALTS_LIB" >/dev/null
+    ALTS_FPS="full (every decoded frame)"
+else
+    ALTS_FPS="stock (every second frame)"
+fi
 
 # RGI native half, installed by Toolbox/scripts/rgi_companion.sh from AltScreen INSTALL.
 mkdir -p "$OUT/$RGI_DIR"
@@ -89,6 +100,7 @@ if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"; else SHA="shasum 
   $SHA -c SHA256SUMS-SD.txt >/dev/null )
 
 echo "  jar: $JAR_DEST size=$JAR_SIZE cksum=$JAR_CKSUM"
+echo "  altscreen frame tap: $ALTS_FPS"
 echo "  rgi: $RGI_DIR ($(ls "$OUT/$RGI_DIR" | wc -l | tr -d ' ') files)"
 echo "  sums: SHA256SUMS-SD.txt ($(wc -l < "$OUT/SHA256SUMS-SD.txt" | tr -d ' ') files, verified)"
 
