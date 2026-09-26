@@ -84,7 +84,9 @@ features below follow it automatically.
 | `common/` | Shared renderer code: QNX Screen surface, GL program-binary cache, log timestamps |
 | `deploy/smartphone_integrator/` | Runtime scripts and child-process configuration for the HU |
 | `install_MoreIncredibleBash/`, `uninstall_MoreIncredibleBash/`, `logging_MoreIncredibleBash/` | M.I.B. custom scripts that install / remove a staged release / collect logs |
-| `scripts/` | Docker build entry points (Java / hook / renderer) and host test runners |
+| `altscreen/` | AltScreen SD tree (CarPlay video on the VC) with RGI wired into its installer; `scripts/build_sd.sh` turns it into a card |
+| `deploy/altscreen/` | The AltScreen variant of the SI carplay child (`CARPLAY_PRELOAD_EXTRA`) |
+| `scripts/` | Docker build entry points (Java / hook / renderer / SD card) and host test runners |
 | `tests/` | Host tests (C, Java, Python) for the hook, Java bridge and renderer |
 | `toolchain/qnx65-abi/` | QNX Screen ABI headers used only for cross-compilation |
 | `docs/` | Markdown knowledge base (also opens in Obsidian) - validated RE + implementation notes (open [`docs/INDEX.md`](docs/INDEX.md)) |
@@ -128,6 +130,27 @@ There is one hook image: logging is always compiled in, WARN/ERROR by default, I
 ./scripts/build_hook.sh                        # production image
 LOG_RGD_PACKET_RAW=1 ./scripts/build_hook.sh   # + raw RGD packet hex dumps
 ```
+
+### AltScreen SD card (CarPlay video on the VC + route guidance)
+
+`altscreen/` holds the [MHI2Q-CarPlay-AltScreen](https://github.com/yuedizhibo/MHI2Q-CarPlay-AltScreen)
+SD tree (CarPlay's instrument-cluster video on the Virtual Cockpit) with this project's route
+guidance wired into its installer. One command builds everything and stages a ready card:
+
+```sh
+STOCK_JAR=MU1329-base.jar ./scripts/build_sd.sh                  # -> build/sd/
+SD=/Volumes/SD32 STOCK_JAR=MU1329-base.jar ./scripts/build_sd.sh   # ... and copy onto the card
+```
+
+It fills in the JAR size/cksum that AltScreen's INSTALL/START/STATUS pin and regenerates
+`SHA256SUMS-SD.txt`; the card's `MMI-Cockpit-Carplay/` (AltScreen stock backups) is never touched.
+On the car: **Toolbox -> Update Toolbox**, then **MMI-Cockpit-Carplay -> INSTALL**, reboot, **START**,
+reboot. While the video runs the cluster uses ctx 81 (`{98, 101, 102, 3}`, maneuver panel over the
+video); without it route guidance falls back to ctx 80 over the stock map
+([display-contexts](docs/cluster/display-contexts.md)). **STATUS** reports `DIO_PRELOAD_ALTSCREEN`,
+`DIO_PRELOAD_RGI`, `RGI_*` and the live context. **RESTORE ORIGINAL** removes both.
+End-to-end check of the package (needs an AltScreen stock backup from a unit):
+`FIXTURE=<card>/MMI-Cockpit-Carplay/backup ./scripts/test_altscreen_e2e.sh`.
 
 ### Tests
 
