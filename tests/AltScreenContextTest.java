@@ -10,7 +10,6 @@ import java.util.*;
 public final class AltScreenContextTest implements InvocationHandler {
     final List switches = Collections.synchronizedList(new ArrayList());
     volatile int current = 74;
-    volatile int lastRate = -1;
 
     static void check(boolean b, String message) { if (!b) throw new AssertionError(message); }
 
@@ -19,8 +18,6 @@ public final class AltScreenContextTest implements InvocationHandler {
             current = ((Integer)args[0]).intValue();
             switches.add(Integer.valueOf(current));
         }
-        if (method.getName().equals("setUpdateRate") && ((Integer)args[0]).intValue() == 1)
-            lastRate = ((Integer)args[1]).intValue();
         if (method.getName().equals("getCurrentContextID")) return Integer.valueOf(current);
         Class type = method.getReturnType();
         if (type == Boolean.TYPE) return Boolean.FALSE;
@@ -66,22 +63,6 @@ public final class AltScreenContextTest implements InvocationHandler {
         set(AltScreenVideo.class, "activePath", active.getPath());
         set(AltScreenVideo.class, "readyPath", ready.getPath());
 
-        // GEM "cluster refresh" choice: ctx 81 only, 10..60, anything else -> 30.
-        File fps = new File(dir, "cluster_fps");
-        set(ScreenModule.class, "videoFpsPath", fps.getPath());
-        Method videoFps = ScreenModule.class.getDeclaredMethod("videoClusterFps", new Class[0]);
-        videoFps.setAccessible(true);
-        check(((Integer)videoFps.invoke(null, new Object[0])).intValue() == 30, "no choice -> 30");
-        String[][] cases = { {"60\n", "60"}, {"5", "30"}, {"abc", "30"}, {"99", "30"}, {" 45 ", "45"} };
-        for (int i = 0; i < cases.length; i++) {
-            java.io.FileOutputStream o = new java.io.FileOutputStream(fps);
-            o.write(cases[i][0].getBytes()); o.close();
-            check(((Integer)videoFps.invoke(null, new Object[0])).intValue() == Integer.parseInt(cases[i][1]),
-                "fps file '" + cases[i][0].trim() + "' -> " + cases[i][1]);
-        }
-        java.io.FileOutputStream o60 = new java.io.FileOutputStream(fps);
-        o60.write("60".getBytes()); o60.close();
-
         AltScreenContextTest capture = new AltScreenContextTest();
         Object dm = Proxy.newProxyInstance(AltScreenContextTest.class.getClassLoader(),
             new Class[]{IDisplayManagerKombiControl.class}, capture);
@@ -106,8 +87,6 @@ public final class AltScreenContextTest implements InvocationHandler {
         check(capture.current == 74 && !ScreenModule.isAltScreenVideo(), "demand without ready stays stock");
         check(ready.createNewFile(), "ready marker");
         capture.await(81, "ready video enters ctx 81");
-        Thread.sleep(50);
-        check(capture.lastRate == 60, "ctx 81 uses the chosen encoder rate: " + capture.lastRate);
         check(ScreenModule.isAltScreenVideo(), "video flag published");
         int i81 = capture.switches.lastIndexOf(Integer.valueOf(81));
         check(i81 > 0 && ((Integer)capture.switches.get(i81 - 1)).intValue() == 72,
@@ -119,8 +98,6 @@ public final class AltScreenContextTest implements InvocationHandler {
         check(capture.current == 81, "nav does not leave the video context");
         check(ready.delete(), "drop ready");
         capture.await(80, "video loss during nav falls back to stock map ctx 80");
-        Thread.sleep(50);
-        check(capture.lastRate == 30, "ctx 80 keeps the tested 30 fps: " + capture.lastRate);
         ScreenModule.setNavActive(false);
         capture.await(74, "route end without KDK visibility returns to stock");
 
@@ -137,7 +114,7 @@ public final class AltScreenContextTest implements InvocationHandler {
         Thread.sleep(400);
         check(capture.current == 74 && !ScreenModule.isAltScreenVideo(), "stale markers ignored while disconnected");
 
-        fps.delete(); active.delete(); ready.delete(); dir.delete();
-        System.out.println("AltScreenContextTest: marker gating, 72 bounce, nav/video priority, video loss, drift, disconnect, ctx 81 encoder rate PASS");
+        active.delete(); ready.delete(); dir.delete();
+        System.out.println("AltScreenContextTest: marker gating, 72 bounce, nav/video priority, video loss, drift, disconnect PASS");
     }
 }

@@ -44,12 +44,6 @@ public final class ScreenModule implements Module {
     private static final int BOUNCE_SLEEP_MS  = 180;  /* preContextSwitchHook settle (proven driver) */
     private static final long CONTEXT_RECONCILE_MS = 250L;
     private static final int CLUSTER_FPS      = 30;   /* cluster encoder rate; MOST/encoder may cap below this */
-    /* Experimental encoder rate for the AltScreen video context (ctx 81), chosen from the
-     * MMI-Cockpit-Carplay GEM menu.  The mirror's stock renderer presents every second
-     * cluster tick (~15 fps at 30); a faster cluster clock may lift that. */
-    static final String VIDEO_FPS_FILE = "/mnt/app/root/hooks/cluster_fps";
-    private static String videoFpsPath = VIDEO_FPS_FILE;   /* host tests point this at a scratch file */
-    private static final int VIDEO_FPS_MIN = 10, VIDEO_FPS_MAX = 60;
     private static final int KOMBI_TYPE_G24   = 4;
 
     private static final Object LOCK = new Object();
@@ -340,26 +334,6 @@ public final class ScreenModule implements Module {
         }
     }
 
-    /** Encoder rate for ctx 81: VIDEO_FPS_FILE when it holds 10..60, else CLUSTER_FPS. */
-    static int videoClusterFps() {
-        java.io.FileInputStream in = null;
-        try {
-            java.io.File f = new java.io.File(videoFpsPath);
-            if (!f.exists() || f.length() <= 0 || f.length() > 8) return CLUSTER_FPS;
-            byte[] buf = new byte[(int)f.length()];
-            in = new java.io.FileInputStream(f);
-            int n = in.read(buf);
-            int fps = Integer.parseInt(new String(buf, 0, n > 0 ? n : 0).trim());
-            if (fps < VIDEO_FPS_MIN || fps > VIDEO_FPS_MAX) return CLUSTER_FPS;
-            if (fps != CLUSTER_FPS) Log.i(TAG, "AltScreen cluster encoder rate " + fps + " fps (" + videoFpsPath + ")");
-            return fps;
-        } catch (Throwable t) {
-            return CLUSTER_FPS;
-        } finally {
-            if (in != null) try { in.close(); } catch (Throwable t) { }
-        }
-    }
-
     /* Last applied cluster context for on-unit status scripts (AltScreen STATUS reads it);
      * INFO logging is off by default, so the log alone cannot answer "which ctx is live". */
     private static final String CTX_STATE_FILE = "/tmp/carplay_cluster.ctx";
@@ -369,9 +343,7 @@ public final class ScreenModule implements Module {
         try {
             out = new java.io.FileOutputStream(CTX_STATE_FILE);
             out.write(("ctx=" + ctx + "\nvideo=" + (altScreenVideo ? 1 : 0)
-                + "\nnav=" + (navActive ? 1 : 0)
-                + "\nencoder_fps=" + (ctx == CTX_CLUSTER_VIDEO ? videoClusterFps() : CLUSTER_FPS)
-                + "\ntime_ms=" + System.currentTimeMillis()
+                + "\nnav=" + (navActive ? 1 : 0) + "\ntime_ms=" + System.currentTimeMillis()
                 + "\n").getBytes());
         } catch (Throwable t) {
             /* diagnostics only */
@@ -406,8 +378,7 @@ public final class ScreenModule implements Module {
                     }
                 }
                 d.switchContext(ctx, TERMINAL_CLUSTER, null);
-                d.setUpdateRate(TERMINAL_CLUSTER, ctx == CTX_CLUSTER_VIDEO
-                    ? videoClusterFps() : CLUSTER_FPS);   /* (idempotent when already running) */
+                d.setUpdateRate(TERMINAL_CLUSTER, CLUSTER_FPS);   /* (idempotent when already running) */
                 clusterActive = true;
             } else {
                 /* Preserve the stop-before-switch ordering, but never leave terminal 1

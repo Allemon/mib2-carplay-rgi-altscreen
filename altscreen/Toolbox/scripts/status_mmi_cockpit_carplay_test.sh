@@ -226,8 +226,7 @@ else
     echo "DIO_PRELOAD=UNKNOWN pidin_unavailable"
 fi
 grep "\[startup\] preload" "$DEVICE_ROOT/tmp/carplay_wrapper.log" 2>/dev/null | tail -n 1
-# Cluster video smoothness: encoder rate chosen in the GEM menu and the mirror's real output rate.
-[ -f "$RGI_HOOKS/cluster_fps" ] && echo "CLUSTER_FPS_CHOICE=$(cat "$RGI_HOOKS/cluster_fps" 2>/dev/null)" || echo "CLUSTER_FPS_CHOICE=30 (default)"
+# Cluster video smoothness: the mirror's real output rate.
 MIRROR_RUN=$(grep "PHASE=RUN " "$MIRROR_LOG" 2>/dev/null | tail -n 1)
 [ -n "$MIRROR_RUN" ] && echo "MIRROR_PRESENT_FPS=$(echo "$MIRROR_RUN" | sed -n 's/.*present_fps=\([0-9.]*\).*/\1/p') decoded_frames=$(echo "$MIRROR_RUN" | sed -n 's/.*decoded_frames=\([0-9]*\).*/\1/p') presented_frames=$(echo "$MIRROR_RUN" | sed -n 's/.*presented_frames=\([0-9]*\).*/\1/p')" || echo "MIRROR_PRESENT_FPS=UNKNOWN (no RUN line yet)"
 [ -f "$DEVICE_ROOT/tmp/carplay_hook.log" ] && echo "RGI_HOOK_LOG=PRESENT" || echo "RGI_HOOK_LOG=ABSENT (hook not loaded in dio_manager this boot)"

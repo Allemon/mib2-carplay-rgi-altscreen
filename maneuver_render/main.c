@@ -36,6 +36,11 @@
 #define ALTSCREEN_ACTIVE_MARKER "/tmp/mmi-mirror-active"
 #define ALTSCREEN_READY_MARKER  "/tmp/mmi-mirror-basevideo.ready"
 #define ALTSCREEN_FPS           15
+/* Our raised priority (see main) would preempt the AltScreen mirror sidecar, which runs
+ * at the default 10: while it composed the CarPlay video it lost ~23% of its decoded
+ * frames with us at 15 (3% without us).  While the video is up we run at its level. */
+#define RENDER_PRIORITY         15
+#define ALTSCREEN_PRIORITY      10
 #define ALTSCREEN_FRAME_TIME_NS (1000000000L / ALTSCREEN_FPS)
 #include "gl_compat.h"
 #include "render.h"
@@ -79,9 +84,13 @@ static int altscreen_video_up(const struct timespec *now) {
         int was = up;
         checked = *now;
         up = access(ALTSCREEN_ACTIVE_MARKER, F_OK) == 0 && access(ALTSCREEN_READY_MARKER, F_OK) == 0;
-        if (up != was)
-            fprintf(stderr, "engine: AltScreen video %s -> active frames %d fps\n",
-                    up ? "up" : "gone", up ? ALTSCREEN_FPS : TARGET_FPS);
+        if (up != was) {
+            int prio = up ? ALTSCREEN_PRIORITY : RENDER_PRIORITY;
+            int rc = setprio(0, prio);
+            fprintf(stderr, "engine: AltScreen video %s -> active frames %d fps, priority %d%s\n",
+                    up ? "up" : "gone", up ? ALTSCREEN_FPS : TARGET_FPS, prio,
+                    rc < 0 ? " (setprio failed)" : "");
+        }
     }
     return up;
 }
@@ -466,7 +475,7 @@ int main(int argc, char **argv) {
      *
      * Failure (EPERM if not root) is non-fatal — we'll still run, just
      * with stalls. */
-    if (setprio(0, 15) < 0) {
+    if (setprio(0, RENDER_PRIORITY) < 0) {
         fprintf(stderr, "maneuver_render: setprio(15) failed: %s — running at default\n",
                 strerror(errno));
     } else {

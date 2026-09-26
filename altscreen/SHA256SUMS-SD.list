@@ -32,9 +32,6 @@ Toolbox/scripts/altscreen_chain_test_universal.sh
 Toolbox/scripts/altscreen_live_diag.sh
 Toolbox/scripts/altscreen_persistent_diag.sh
 Toolbox/scripts/altscreen_preload.awk
-Toolbox/scripts/cluster_fps.sh
-Toolbox/scripts/cluster_fps_30.sh
-Toolbox/scripts/cluster_fps_60.sh
 Toolbox/scripts/cluster_layout.sh
 Toolbox/scripts/cluster_layout_default.sh
 Toolbox/scripts/cluster_layout_noeta.sh

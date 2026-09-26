@@ -128,7 +128,7 @@ run_flat_plaintext() {
     if command -v sloginfo >/dev/null 2>&1; then
         (exec sloginfo -w -t) > "$flat_system" 2>&1 & flat_slog_pid=$!
     fi
-    flat_hook_offset=0; flat_dio_offset=0; flat_entry_offset=0; flat_mirror_offset=0; flat_mirror_autostart_offset=0; flat_system_offset=0; flat_hmi_hook_offset=0; flat_hmi_controller_offset=0; flat_tick=0
+    flat_hook_offset=0; flat_dio_offset=0; flat_entry_offset=0; flat_mirror_offset=0; flat_mirror_autostart_offset=0; flat_system_offset=0; flat_hmi_hook_offset=0; flat_hmi_controller_offset=0; flat_rgi_java_offset=0; flat_rgi_render_offset=0; flat_rgi_wrapper_offset=0; flat_tick=0
     while [ -f "$ENABLED" ]; do
         flat_hook_offset=$(flat_capture_delta "$(select_hook_source)" "$flat_hook_offset" "$FLAT_DEST/streams/hook_tmp.log" "${FLAT_PREFIX}_hook.chunk")
         flat_dio_offset=$(flat_capture_delta "$ROOT/tmp/CinemoDioManager.log" "$flat_dio_offset" "$FLAT_DEST/streams/dio_tmp.log" "${FLAT_PREFIX}_dio.chunk")
@@ -139,6 +139,10 @@ run_flat_plaintext() {
         # Java HMI hook: cluster layer geometry (ClusterLayers/ClusterGeom) and view-size state.
         flat_hmi_hook_offset=$(flat_capture_delta "$ROOT/tmp/carplay_hook.log" "$flat_hmi_hook_offset" "$FLAT_DEST/streams/hmi_hook.log" "${FLAT_PREFIX}_hmi_hook.chunk")
         flat_hmi_controller_offset=$(flat_capture_delta "$ROOT/tmp/mmi-mirror-controller.log" "$flat_hmi_controller_offset" "$FLAT_DEST/streams/hmi_controller.log" "${FLAT_PREFIX}_hmi_controller.chunk")
+        # RGI: Java (context/zoom), maneuver renderer (AltScreen pacing/priority) and the child wrapper (preloads).
+        flat_rgi_java_offset=$(flat_capture_delta "$ROOT/tmp/carplay_java.log" "$flat_rgi_java_offset" "$FLAT_DEST/streams/rgi_java.log" "${FLAT_PREFIX}_rgi_java.chunk")
+        flat_rgi_render_offset=$(flat_capture_delta "$ROOT/tmp/maneuver_render.log" "$flat_rgi_render_offset" "$FLAT_DEST/streams/rgi_render.log" "${FLAT_PREFIX}_rgi_render.chunk")
+        flat_rgi_wrapper_offset=$(flat_capture_delta "$ROOT/tmp/carplay_wrapper.log" "$flat_rgi_wrapper_offset" "$FLAT_DEST/streams/rgi_wrapper.log" "${FLAT_PREFIX}_rgi_wrapper.chunk")
         if [ -f "$flat_system" ] && [ "$(wc -c < "$flat_system")" -ge 8388608 ]; then
             flat_log_event "SYSTEM_RAW_TRIM possible_boundary_loss=1 limit_bytes=8388608"
             : > "$flat_system"
@@ -165,6 +169,8 @@ run_flat_plaintext() {
                 ls -la "$VOLUME/MMI-Cockpit-Carplay/state"
                 echo "--- mmi-mirror-hmi.state"; cat "$ROOT/tmp/mmi-mirror-hmi.state"
                 echo "--- cluster_geom.cfg"; cat "$ROOT/tmp/cluster_geom.cfg"
+                echo "--- carplay_cluster.ctx"; cat "$ROOT/tmp/carplay_cluster.ctx"
+                echo "--- process priorities"; pidin -p maneuver_render -p carplay-alt111-mirror-display -f anp 2>/dev/null
             } > "$flat_state" 2>&1
             flat_plain_append "$flat_state" "$FLAT_DEST/file_state.txt.log" 2>/dev/null || true
             rm -f "$flat_state"
