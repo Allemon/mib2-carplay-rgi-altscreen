@@ -17,6 +17,13 @@ Integrates **[MHI2Q-CarPlay-AltScreen](https://github.com/yuedizhibo/MHI2Q-CarPl
   <sub>CarPlay cluster video stream with full navigation map & maneuver overlay on Audi Virtual Cockpit (tested on Audi Q5 FY, MU1329)</sub>
 </p>
 
+**Steering-wheel zoom on Virtual Cockpit**
+
+<p align="center">
+  <img src="assets/gallery/zoom_demo.gif" width="45%" /><br />
+  <sub>Zooming the CarPlay cluster map directly via the left steering-wheel roller</sub>
+</p>
+
 **Virtual Cockpit: route guidance from the 3D maneuver renderer**
 
 <p align="center">
@@ -87,7 +94,15 @@ features below follow it automatically.
   roller) to switch it to arrival time and time left, and press again to go back; it returns by itself
   after 20 s ([details](docs/rgd/vc-route-text.md)).
 - **Head-up display.** The same maneuver icons, lane arrows and distance appear on the HUD.
-- **Steering-wheel roller** keeps zooming the stock cluster map when in context 80, as without CarPlay.
+- **Steering-wheel roller zoom for CarPlay map & stock map.** While the AltScreen CarPlay video is on
+  the Virtual Cockpit, each click of the left steering-wheel roller sends the factory AirPlay
+  `changeMapZoomLevel` command to the iPhone for the cluster display (matching OEM CarPlay behavior).
+  Scrolling away zooms out, scrolling towards you zooms in. The native Audi map beneath the video also
+  continues to zoom ([details](docs/input/steering-wheel.md)).
+- **Cluster map layout selector (car marker centering).** To address the car location marker
+  offset caused by iOS reserving space for its own maneuver card, the MMI-Cockpit-Carplay GEM menu
+  provides a **Cluster map layout** selector with four options: *AltScreen default*, *maneuver card on top*,
+  *maneuver card on the right*, and *no ETA* (applied on next phone reconnect).
 - **Cover art on the cluster.** The now-playing album art shows on the cluster media screen.
 - **Parking popups no longer hide CarPlay.** When the Audi front PDC / parking view pops up beside it,
   CarPlay stays on screen instead of being replaced ([details](docs/hmi/pdc-small-stage.md)).
@@ -176,6 +191,8 @@ End-to-end check of the package (needs an AltScreen stock backup from a unit):
 `FIXTURE=<card>/MMI-Cockpit-Carplay/backup ./scripts/test_altscreen_e2e.sh`.
 
 #### Key enhancements over upstream AltScreen:
+- **Steering-wheel cluster map zoom:** Each roller click sends `changeMapZoomLevel` directly to iOS via AirPlay (`CRSUIClusterZoomAction`); scrolling away zooms out, scrolling towards zooms in.
+- **Cluster map layout selector (vehicle marker centering):** GEM menu provides four selectable layouts (`AltScreen default`, `maneuver card on top`, `maneuver card on the right`, `no ETA`) to balance map layout and vehicle marker centering without obscuring navigation.
 - **Corrected aspect ratio & projection:** Instead of stretching or squashing the image, the mirror sidecar is rebuilt with a 1:1 aspect ratio and clean bottom crop so that maps and road geometry display with natural proportions.
 - **Removed watermarks:** Upstream advertising and promotional text watermarks are removed (`watermark.rgba` is completely transparent).
 - **OEM Audi startup logo:** Replaced third-party repository startup branding with an authentic Audi logo (`logo.rgba`).
@@ -227,7 +244,9 @@ This installs both **AltScreen** (full CarPlay cluster video stream on the Virtu
 5. **Open GEM -> MMI-Cockpit-Carplay -> START** to activate the mirror display service.
 6. **Reboot the unit.**
 
-**Verification & Management:**
+**On-Car Verification & Features:**
+- **Steering-wheel zoom:** Start CarPlay with the navigation map on the Virtual Cockpit and turn the left steering-wheel roller ("away" = zoom out, "towards" = zoom in).
+- **Vehicle marker alignment:** Build a route in CarPlay, navigate to **MMI-Cockpit-Carplay -> Cluster map layout** in GEM, and test the four options (`AltScreen default`, `maneuver card on top`, `maneuver card on the right`, `no ETA`), reconnecting the phone after each to see which layout gives the most centered car marker on your cluster view (Classic / Sport).
 - **STATUS:** Run **MMI-Cockpit-Carplay -> STATUS** in GEM to inspect system health. It reports `DIO_PRELOAD_ALTSCREEN`, `DIO_PRELOAD_RGI`, `RGI_*` status, and the live display context from `/tmp/carplay_cluster.ctx`.
 - **RESTORE ORIGINAL:** Selecting **RESTORE ORIGINAL** in GEM cleanly removes all patches and restores the stock firmware configuration from backup.
 
