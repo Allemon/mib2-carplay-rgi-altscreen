@@ -1,138 +1,108 @@
-# MIB2 Toolbox — CarPlay AltScreen V2.1
+# MIB2 Toolbox — CarPlay AltScreen + Route Guidance Integration (RGI)
 
-[English](README_EN.md) | **简体中文**
+**English** | [Українська](README_UA.md)
 
-本项目面向 Audi **MHI2Q** 平台，用于将 **CarPlay 原生 AltScreen / 第二屏导航画面**直接显示至车辆的 **Virtual Cockpit**。核心显示链路已完成实车验证；运行时水印已移除（完全透明），启动 Logo 已实车确认，画面按原始比例 1:1 显示（不再拉伸变形）。具体兼容性以安装脚本的固件核验结果为准。操作前请先阅读 [SD 卡说明](SD_CARD_README.txt)。
+This tree contains the SD-card package for Audi **MHI2Q** infotainment units, enabling the **native CarPlay AltScreen (secondary navigation video stream)** directly on the vehicle's **Virtual Cockpit**, integrated with full 3D turn-by-turn route guidance, steering-wheel map zoom, and vehicle marker centering.
 
-> [!NOTE]
-> **姊妹项目：MMI Mirror**  
-> 如果你希望显示的是 **MMI 中控完整画面镜像**，而不是 CarPlay 原生第二屏，请前往：  
-> **[MHI2Q-CarPlay-MMI-Mirror](https://github.com/Lanye-z/MHI2Q-CarPlay-MMI-Mirror)**
+The core display pipeline, watermark removal, aspect-ratio correction, steering-wheel zoom, and RGI integration have been vehicle-validated.
 
-> [!WARNING]
-> **⚠️ 写在前面**
->
-> 当前仓库提供的是基于实车验证显示链路的 **先行公开版本**。运行时水印已移除，启动 Logo 与画面比例修正均已实车确认。完整开发版本已经包含更多功能，但考虑到此前免费测试成果曾被未经允许包装和倒卖，我们不会在第一次公开时一次性发布全部功能。
->
-> 后续会在完成整理、稳定性验证和兼容性确认后，逐步将成熟功能更新到公开版本。
->
-> 当前版本并非演示代码，现有 CarPlay AltScreen 第二屏功能已经可以正常实车使用。
->
-> 本项目最初就是基于我们自己的车辆和日常使用需求进行开发，当前开发与测试范围以 **MHI2Q / 中国区（CN）固件**为主。我们目前**不会针对 MHI2 平台，也不会针对 US / ER 等其他地区固件主动开展适配**。如果你的车辆不在当前已验证范围内，请不要默认其具备兼容性，也不要绕过安装脚本的检查强制安装。
->
-> **免费分享，禁止倒卖。**
->
-> 可以学习、研究和交流，但请不要把免费的测试与开发成果重新包装后用于牟利。
+**Tested & confirmed working on:**
+- **Vehicle:** Audi Q5 (FY) 2019
+- **Firmware Train:** `MHI2Q_ER_AUG22_P5092`
+- **MU Software:** `1329`
+*(Also compatible with China AUG22 and other MHI2Q units supported by the installer checks).*
 
 > [!IMPORTANT]
-> 本项目会修改车机系统文件。安装、启动或恢复过程中请保持 SD 卡连接和车机供电稳定。  
-> **安装或恢复完成后，请按照页面中的步骤完整重启车机 / HMI，再判断结果。**
->
-> 请勿在驾驶过程中进行安装、更新、恢复或故障处理。
+> This package modifies head unit configurations and system binaries. Keep the SD card inserted and maintain stable vehicle battery power during installation, start, or recovery operations.  
+> **After installation or recovery, fully reboot the head unit (MMI reboot button combo) as instructed before evaluating results.**  
+> Do not perform installation, updates, or troubleshooting while driving.
 
 ---
 
-## 实车效果
+## 🖼️ Vehicle Demonstration
 
-<img width="1920" height="1080" alt="CarPlay AltScreen on Virtual Cockpit" src="https://github.com/user-attachments/assets/f582d179-8c8e-41ac-882b-24d623813fca" />
+<p align="center">
+  <img src="../assets/gallery/vc_altscreen_classic.jpg" width="45%" />
+  <img src="../assets/gallery/vc_altscreen_sport.jpg" width="45%" /><br />
+  <sub>CarPlay cluster video stream with full navigation map & maneuver overlay on Audi Virtual Cockpit (Classic & Sport layouts)</sub>
+</p>
 
----
-
-## 当前公开版本已支持
-
-- CarPlay 原生 AltScreen
-- CarPlay 主屏正常使用，不受第二屏影响
-- STATUS 状态诊断
-- 安全安装与恢复
-- 安装 / 恢复中断保护
-- 原车配置恢复
-- 日志与 SD 卡备份
-- 核心显示链路已在 **中国区 AUG22 固件**完成实车验证；运行时水印已移除、启动 Logo 与画面比例修正均已实车确认
-
-## 暂未包含在当前公开版本
-
-- 方向盘滚轮控制 CarPlay 地图缩放
-- 更完整的 RGI 导航信息联动
-- Classic / Sport 动态布局适配
-
-上述功能会根据稳定性、兼容性和整理进度，逐步更新到后续公开版本。**MHI2 平台以及 US / ER 等其他地区固件的适配目前不在本项目计划内。**
-
-### 未来将引入：
-
-https://github.com/user-attachments/assets/b6506445-d6a5-4765-9d4f-db64be53ae44
-
-https://github.com/user-attachments/assets/53cfcd21-63ea-4e7b-a1f7-68f02353de05
+<p align="center">
+  <img src="../assets/gallery/zoom_demo.gif" width="45%" /><br />
+  <sub>Steering-wheel roller zoom on Virtual Cockpit</sub>
+</p>
 
 ---
 
-### 安装与测试
+## ✨ Features & Enhancements
 
-#### 1. 准备 SD 卡
+This package integrates upstream **[MHI2Q-CarPlay-AltScreen](https://github.com/yuedizhibo/MHI2Q-CarPlay-AltScreen)** and **[mib2q-carplay-rgi](https://github.com/luka-dev/mib2q-carplay-rgi)** with local improvements:
 
-1. 先在车机信息页确认固件版本。此包面向安装脚本能够核验的 **AUG22** 固件；若版本不符、无法确认，或车机拒绝更新包，就停止操作，不要强制刷入。当前根目录沿用已实车验证的 AUG22 显示链路，水印移除与画面比例修正均已实车确认。
-2. 车辆停稳，保持稳定供电。备份正在使用的 SD 卡及原车文件，并准备一张可正常读写的 **FAT32** SD 卡。
-3. 下载仓库 ZIP 并解压，**将仓库根目录的内容直接复制到 SD 卡根目录**，不要再套一层仓库名或“SD卡”文件夹。卡根目录应直接看到 `metainfo2.txt`、`Toolbox`、`SD_CARD_README.txt`、`SHA256SUMS-SD.txt`。`README.md`、根目录 `LICENSE` 和 `.gitattributes` 不参与车机安装，可不复制。
-4. 如果旧卡已有 `MMI-Cockpit-Carplay` 目录，换卡时把该目录完整复制到新卡；它含有原车备份及诊断资料。以后执行恢复时要插入**含原车备份**的卡，不能只用一张新复制的空白卡。
-5. 复制完成后，在 SD 卡根目录用 Git Bash、Linux 或其他提供 `sha256sum` 的环境运行 `sha256sum -c SHA256SUMS-SD.txt`，确认清单中的文件均为 `OK`。清单仅覆盖选定的 38 个运行文件，不覆盖仓库全部文件。
-
-#### 2. 安装或更新 MIB Toolbox
-
-1. **车上已有 MIB Toolbox：**插入本卡，在 Toolbox 菜单执行 `Update Toolbox`，更新工程菜单和脚本。更新完成后确认能看到 `MMI-Cockpit-Carplay` 菜单。
-2. **车上没有 MIB Toolbox：**通过车机的**软件更新**入口选择本卡的更新包（卡根目录的 `metainfo2.txt`），安装随卡提供的菜单和脚本；完成后进入 Toolbox 工程菜单，确认有 `MMI-Cockpit-Carplay`。不同车机的入口名称可能不同，以车机实际显示为准。
-3. 如果软件更新入口不识别卡或拒绝该包，检查 FAT32 格式及根目录结构；仍被拒绝就停止，不要绕过车机或安装脚本的兼容性检查。
-
-#### 3. 安装第二屏并启动
-
-在 `MMI-Cockpit-Carplay` 菜单中按以下顺序操作，每步完成后再进行下一步：
-
-1. **断开 iPhone / CarPlay**，避免安装过程中正在输出导航视频。
-2. 选择 `INSTALL`。等待执行结束；看到 `INSTALL=PASS` 且提示 `reboot_required=YES` 后，**完整重启车机**。若出现 `FAIL`，先记录提示并停止后续步骤。
-3. 重启完成后选择 `START`。等待 `START=PASS` 和 `reboot_required=YES`，然后**再次完整重启车机**。若失败，不要直接跳到连接手机。
-4. 第二次重启后连接 iPhone、进入 CarPlay 并启动导航。观察 Virtual Cockpit 是否出现第二屏画面且能随导航更新。收到有效第二屏视频后，启动 Logo 约显示 2 秒；运行时不再显示任何水印，画面按原始比例 1:1 显示。启动 Logo 不是整车开机 Logo。
-
-#### 4. 查看状态和排查
-
-- 在 CarPlay 导航运行时打开 `STATUS`。`PHYSICAL_ROUTE_READY=SOFTWARE_CHAIN_COMPLETE` 表示脚本观察到视频解码、显示链路和 Context 80 等软件条件；仍须**亲眼确认仪表实际显示画面**。`PHYSICAL_ROUTE_READY=NO` 表示条件未齐，按输出中的缺失项检查。
-- 若看不到菜单，先确认 `Update Toolbox` 或软件更新已完成。若 SD 卡找不到，核对 FAT32、卡根目录文件和读写状态。若 `STATUS` 不就绪，确认已连接 CarPlay 且导航正在输出，再记录状态及日志；不要反复强制执行 `START`。
-- `STORE LOGS + RESTORE` 会尽力保存诊断日志，**随后立即恢复原车配置**；它不是只导出日志的按钮。需要保留第二屏运行时，不要选择它。
-
-#### 5. 恢复原车
-
-1. 插入保留了 `MMI-Cockpit-Carplay` 原车备份目录的 SD 卡，在菜单选择 `RESTORE ORIGINAL`；若要先收集日志再恢复，选择 `STORE LOGS + RESTORE`。
-2. 等待 `RESTORE=PASS` 和 `reboot_required=YES`，然后完整重启车机。恢复会删除本项目的 HMI JAR，并还原相关原车配置。
-3. 如果安装或恢复中断，运行会保持关闭。保留原备份卡，先重新执行 `RESTORE ORIGINAL`，确认恢复成功后再考虑重新 `INSTALL`；不要在恢复未完成时继续 `START`。
-
-详细运行说明见 [SD 卡说明](SD_CARD_README.txt)。车机修改有黑屏或需要恢复的风险。
-### 许可与第三方文件
-
-本项目由 [yuedizhibo](https://github.com/yuedizhibo) 和 [Lanye-z](https://github.com/Lanye-z) 共同开发。仓库根目录的 [PolyForm Noncommercial 1.0.0 许可](LICENSE)仅适用于相应权利人有权按该许可发布的原创部分：允许非商业使用、修改和分发；商业使用须另行取得相关权利人的许可。由于限制商用，本项目属于**源码可见的非商业许可**，不属于 OSI 定义的开源许可。
-
-仓库中包含第三方文件，其原有授权不因仓库根目录的许可而改变。上游 MIB2 Toolbox 的 [MIT 许可](LICENSE.TOOLBOX-MIT)和镜像运行组件的[独立许可](Toolbox/carplay_alt_screen/mirror_display/release/LICENSE.MMI-MIRROR)均须保留；使用或再分发时应分别遵守其条款。
-
-研究与实现参考项目：
-
-- [LIVI](https://github.com/f-io/LIVI)：CarPlay 主屏与仪表第二屏协议行为的研究参考。
-- [mib2q-carplay-rgi](https://github.com/luka-dev/mib2q-carplay-rgi)：MHI2Q 的 CarPlay 导航引导、HMI 与仪表交互参考。
-- [MIB2 High Toolbox](https://github.com/jilleb/mib2-toolbox)：SD 卡工具链、工程菜单及脚本的上游项目。
+- **CarPlay AltScreen on Virtual Cockpit:** Native secondary CarPlay stream (Apple Maps, Google Maps) drawn on displayable 3 (Context 81).
+- **Steering-Wheel Roller Zoom:** Scrolling the left steering-wheel roller sends the factory AirPlay `changeMapZoomLevel` command to iOS (`CRSUIClusterZoomAction`), zooming the CarPlay cluster map directly (away = zoom out, towards = zoom in). The native map underneath continues to zoom simultaneously.
+- **Cluster Map Layout Selector (Marker Centering):** GEM menu provides four selectable layouts (`AltScreen default`, `maneuver card on top`, `maneuver card on the right`, `no ETA`) to balance map layout and vehicle marker centering.
+- **Integrated Route Guidance (RGI):** Turn-by-turn 3D maneuver arrows, distance to turn, remaining time, route text, and HUD integration seamlessly composited over the CarPlay video stream in Display Context 81 (`{98, 101, 102, 3}`).
+- **Seamless Fallback:** If the AltScreen video stream is inactive or idle, `ScreenModule` automatically falls back to Context 80 (3D maneuver arrow over native Audi map) or Context 74.
+- **Natural 1:1 Aspect Ratio:** The mirror sidecar has been rebuilt with a 1:1 aspect ratio and clean bottom crop so that maps and road geometry display with natural proportions without horizontal or vertical stretching.
+- **Clean OEM Aesthetics:** Upstream promotional watermarks are completely removed (`watermark.rgba` is transparent). Startup splash uses an authentic Audi logo (`logo.rgba`) instead of third-party repository branding.
+- **Automatic Preload Merging:** `rgi_companion.sh` wires `CARPLAY_PRELOAD_EXTRA` in `smartphone_integrator.json` so the AltScreen universal preload and `libcarplay_hook.so` are cleanly merged for `dio_manager`.
+- **Safe State & Backups:** Stock configuration files are safely backed up in `MMI-Cockpit-Carplay/backup/`. `RESTORE ORIGINAL` cleanly restores the unit to factory state.
 
 ---
 
-# 版本状态
+## 🚀 Installation & Testing
 
-当前推荐版本：
+### 1. Build & Prepare the SD Card
 
-~~~text
-main
-└── AUG22 / V2.1
-    └── 中国区实车验证完成
-~~~
+Using the root build script (builds all native binaries, Java patches, pins JAR checksums, and copies to SD):
 
-当前公开版本以稳定、可安装、可恢复为优先目标；后续功能将分阶段更新。
+```sh
+# Build and stage files into build/sd/
+STOCK_JAR=MU1329-base.jar ./scripts/build_sd.sh
+
+# Or directly copy and verify onto the FAT32 SD card:
+SD=/Volumes/SD32 STOCK_JAR=MU1329-base.jar ./scripts/build_sd.sh
+```
+
+The SD card root will contain:
+`metainfo2.txt`, `Toolbox/`, `SD_CARD_README.txt`, and `SHA256SUMS-SD.txt`.
+
+> [!NOTE]
+> If your SD card already has an `MMI-Cockpit-Carplay/` folder with stock backups from your car, **keep it on the card**. `RESTORE ORIGINAL` requires the unit's stock backups to revert changes.
+
+### 2. Update MIB Toolbox
+
+1. Insert the SD card into slot 1 (SD1) of the MMI unit.
+2. If MIB Toolbox is already on the unit: open Green Engineering Menu (GEM) -> **Toolbox -> Update Toolbox** to refresh scripts and menus.
+3. If MIB Toolbox is not yet installed: use the MMI **Software Update (SWDL)** menu to install the package using `metainfo2.txt`.
+4. Confirm that the `MMI-Cockpit-Carplay` menu appears in GEM.
+
+### 3. Install & Start
+
+In the GEM **MMI-Cockpit-Carplay** menu, execute the following steps in order:
+
+1. **Disconnect iPhone / CarPlay** so no navigation video is streaming during installation.
+2. Select **INSTALL**. Wait for completion (`INSTALL=PASS`, `reboot_required=YES`), then **fully reboot the head unit** (hold MMI knob + top right + nav toggle).
+3. After reboot, enter GEM -> **MMI-Cockpit-Carplay -> START**. Wait for `START=PASS` and `reboot_required=YES`, then **fully reboot the head unit again**.
+4. After the second reboot, connect your iPhone, start CarPlay, and launch navigation (Apple Maps / Google Maps). The Virtual Cockpit will show the CarPlay cluster video stream with the maneuver overlay.
+
+### 4. Verification & Testing
+
+- **Steering-wheel zoom:** While navigation is running on the cluster, turn the left steering-wheel roller to zoom the CarPlay map in and out.
+- **Cluster map layout (marker position):** In GEM -> **MMI-Cockpit-Carplay -> Cluster map layout**, test the four layout presets, reconnecting the phone after each to check which centers the vehicle marker best for your cluster layout (Classic or Sport).
+- **STATUS:** Open **MMI-Cockpit-Carplay -> STATUS** in GEM. It verifies `DIO_PRELOAD_ALTSCREEN`, `DIO_PRELOAD_RGI`, `RGI_*`, and live cluster display context (`81` = video + maneuver, `80` = maneuver on stock map, `74` = idle).
+
+### 5. Restore Original Stock Configuration
+
+1. Insert the SD card containing your `MMI-Cockpit-Carplay` backup directory.
+2. In GEM, open **MMI-Cockpit-Carplay -> RESTORE ORIGINAL** (or `STORE LOGS + RESTORE` to collect diagnostics first).
+3. Wait for `RESTORE=PASS` and `reboot_required=YES`, then fully reboot the head unit. All patches are uninstalled and stock configurations are restored.
 
 ---
 
-# 开源说明
+## 📜 Licenses & Attribution
 
-本项目当前公开的是可安装运行包与相关说明，并不代表完整开发版本的全部功能已经一次性公开。
-
-> **免费分享，禁止倒卖。**
+- **Upstream AltScreen Project:** Developed by [yuedizhibo](https://github.com/yuedizhibo) and [Lanye-z](https://github.com/Lanye-z) ([MHI2Q-CarPlay-AltScreen](https://github.com/yuedizhibo/MHI2Q-CarPlay-AltScreen)). Original material licensed under [PolyForm Noncommercial 1.0.0](LICENSE). Noncommercial use only; do not resell.
+- **Route Guidance Integration (RGI):** Developed by [luka-dev](https://github.com/luka-dev/mib2q-carplay-rgi).
+- **MIB2 High Toolbox:** Upstream tools and GEM scripting by [jilleb](https://github.com/jilleb/mib2-toolbox) under [MIT License](LICENSE.TOOLBOX-MIT).
+- **Mirror Runtime:** Independent license [LICENSE.MMI-MIRROR](Toolbox/carplay_alt_screen/mirror_display/release/LICENSE.MMI-MIRROR).

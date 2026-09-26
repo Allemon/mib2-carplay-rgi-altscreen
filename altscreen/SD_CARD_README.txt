@@ -1,23 +1,30 @@
-MMI Cockpit CarPlay 第二屏 SD 运行包（AUG22 / V2.1）
+MMI Cockpit CarPlay AltScreen + RGI SD Package
 
-1. 将本文件所在的 SD卡 文件夹内全部内容复制到另一张 SD 卡的根目录。
-   根目录应直接看到 metainfo2.txt、Toolbox、SD_CARD_README.txt 和 SHA256SUMS-SD.txt。
-2. 如果原卡上已有 MMI-Cockpit-Carplay 的 state/backup/logs，请保留这些车机备份文件；
-   换新卡之前应先复制原卡上的 MMI-Cockpit-Carplay 目录，否则 RESTORE 无法找到原备份。
-3. 车上已经安装 MIB Toolbox：先在 Toolbox 菜单执行 Update Toolbox，更新脚本和工程菜单。
-   车上尚未安装 MIB Toolbox：通过车机软件更新入口使用本卡的 metainfo2.txt 安装精简菜单与脚本。
-4. 在 MMI-Cockpit-Carplay 菜单执行：断开 iPhone → INSTALL → 完整重启 → START →
-   完整重启 → 连接 CarPlay → 开导航。也可通过 SSH 直接执行本卡 Toolbox/scripts 中
-   的同名脚本。若固件/更新菜单不接受 SWDL 包，请勿强制刷入。
-5. 仅支持脚本可核验的 AUG22 固件。Logo 在收到有效第二屏视频后出现约 2 秒；
-   运行时不再显示任何水印，画面按原始比例 1:1 显示，不再拉伸变形。
-   Logo 仅用于第二屏启动画面，不是整车开机 Logo。
-6. 恢复使用 RESTORE ORIGINAL；将删除本项目的 HMI JAR，并恢复原车相关配置。
-7. 运行标记保存在车机 /mnt/app/root/carplay-altscreen/state；冷启动不依赖 SD 卡。
-   SD 卡保存原车备份和有上限的诊断日志；RESTORE ORIGINAL 仍需插入含原备份的 SD 卡。
-   如安装或恢复中断，运行会保持关闭；重新执行 RESTORE ORIGINAL，再 INSTALL。
-8. 临时运行文件只写在 /tmp 根目录，不在 /tmp 下建文件夹。
-   配置替换时在 /mnt/system 同目录短暂暂存，以保证原子替换；下次安装或恢复会清理断电残留。
-本卡只保留车机运行所需文件，不包含源码、编译目录和其他 Toolbox 工具附件。
+1. Copy all contents of this package directly to the root of a FAT32 SD card.
+   The card root should directly contain:
+   metainfo2.txt, Toolbox/, SD_CARD_README.txt, and SHA256SUMS-SD.txt.
+2. If your previous SD card already has an MMI-Cockpit-Carplay directory with stock
+   backups, state, or logs, preserve it and copy it to the new card. RESTORE ORIGINAL
+   requires the original backups created during the initial installation.
+3. Unit already has MIB Toolbox: Run "Update Toolbox" in the Toolbox menu to refresh
+   scripts and the Green Engineering Menu (GEM).
+   Unit does not have MIB Toolbox: Install the menu and scripts via the MMI Software
+   Update (SWDL) menu using metainfo2.txt.
+4. Execution in GEM (MMI-Cockpit-Carplay menu):
+   Disconnect iPhone -> INSTALL -> Full MMI Reboot -> START -> Full MMI Reboot ->
+   Connect iPhone / CarPlay -> Launch navigation.
+5. Supported on MHI2Q units (tested on Audi Q5 FY 2019, MHI2Q_ER_AUG22_P5092, MU 1329).
+   - Display video is rendered at 1:1 aspect ratio with clean bottom crop (no distortion).
+   - Watermarks are completely removed (transparent overlay).
+   - Startup screen displays the Audi logo (logo.rgba) for ~2 seconds.
+   - Steering-wheel roller zooms CarPlay map and native map simultaneously.
+   - Four Cluster map layout presets available in GEM for car marker positioning.
+6. To restore stock firmware configurations, run RESTORE ORIGINAL from the menu.
+7. Runtime state flags are stored on the unit at /mnt/app/root/carplay-altscreen/state.
+   Cold boots do not require the SD card to remain inserted once installed.
+   The SD card holds stock backups and diagnostic logs; always retain your backup card.
+8. Temporary runtime files are written to /tmp. Configuration file replacements are
+   performed atomically with .carplay-stock backups maintained.
 
-显示链路、水印移除与画面比例修正均已完成实车验证。使用前请备份 SD 卡，并先用 SHA256SUMS-SD.txt 核验文件。
+Display pipeline, watermark removal, aspect-ratio correction, steering-wheel zoom,
+and route guidance integration have all been verified on-vehicle.
