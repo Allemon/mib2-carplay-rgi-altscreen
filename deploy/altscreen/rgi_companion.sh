@@ -10,8 +10,9 @@
 #                         carplay_cleanup.sh
 # and wires it in:
 #   smartphone_integrator.json  carplay child -> carplay_startup.sh (RGI wrapper), with the
-#                               AltScreen preload kept in its envs; the wrapper appends
-#                               libcarplay_hook.so, so dio_manager loads both
+#                               AltScreen preload kept in its envs (and passed again as
+#                               CARPLAY_PRELOAD_EXTRA); the wrapper builds
+#                               LD_PRELOAD=<altscreen>:libcarplay_hook.so for dio_manager
 #   dio_manager.json            iAP2 route-guidance IDs 0x5200..0x5204
 # remove deletes only the files above; both JSON files come back from the AltScreen
 # ORIGINAL backup in the controller restore that follows.
@@ -112,6 +113,9 @@ patch_json(){
     awk -v validate=1 -f "$awkf" "$t2" >/dev/null || { rm -f "$t2"; echo "patched SI json failed validation"; return 1; }
     awk -v query="$ALTS_PRELOAD" -f "$awkf" "$t2" >/dev/null || { rm -f "$t2"; echo "AltScreen preload missing after patch"; return 1; }
     grep -q '"exec": "carplay_startup.sh"' "$t2" || { rm -f "$t2"; echo "RGI wrapper missing after patch"; return 1; }
+    # The wrapper takes the AltScreen preload from here: a preload already loaded into
+    # the wrapper shell cannot be relied on to survive in LD_PRELOAD itself.
+    grep -q "\"CARPLAY_PRELOAD_EXTRA=$ALTS_PRELOAD\"" "$t2" || { rm -f "$t2"; echo "CARPLAY_PRELOAD_EXTRA missing after patch"; return 1; }
     chmod 644 "$t2" && mv -f "$t2" "$CFG" || { rm -f "$t2"; return 1; }
     echo "RGI_SI_CHILD=INSTALLED exec=/mnt/app/root/hooks/carplay_startup.sh preload=$ALTS_PRELOAD+libcarplay_hook.so"
 }

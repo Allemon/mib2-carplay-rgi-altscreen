@@ -46,13 +46,25 @@ LD_PRELOAD= "$H/carplay_monitor.sh" "$DIO_PID" </dev/null >>"$WLOG" 2>&1 &
 MONITOR_PID=$!
 
 # Only dio_manager receives the hook. The monitor and the renderer explicitly
-# clear LD_PRELOAD. A preload already in the child env (the AltScreen universal
-# hook) stays first; ours is appended, and never twice.
-case ":${LD_PRELOAD:-}:" in
-    *":$H/libcarplay_hook.so:"*) ;;
-    *) LD_PRELOAD="${LD_PRELOAD:+$LD_PRELOAD:}$H/libcarplay_hook.so" ;;
-esac
+# clear LD_PRELOAD. Other preloads for dio_manager (the AltScreen universal hook)
+# come first: CARPLAY_PRELOAD_EXTRA from the child env, then whatever LD_PRELOAD
+# still holds here - a preload loaded into this shell may already have removed
+# itself from it. Ours goes last; each entry once.
+INHERITED_PRELOAD=${LD_PRELOAD:-}
+PRELOAD_LIST=
+OLD_IFS=$IFS
+IFS=:
+for lib in ${CARPLAY_PRELOAD_EXTRA:-} $INHERITED_PRELOAD $H/libcarplay_hook.so; do
+    [ -n "$lib" ] || continue
+    case ":$PRELOAD_LIST:" in
+        *":$lib:"*) ;;
+        *) PRELOAD_LIST=${PRELOAD_LIST:+$PRELOAD_LIST:}$lib ;;
+    esac
+done
+IFS=$OLD_IFS
+LD_PRELOAD=$PRELOAD_LIST
 export LD_PRELOAD
+echo "[startup] preload inherited='${INHERITED_PRELOAD}' extra='${CARPLAY_PRELOAD_EXTRA:-}' -> '$LD_PRELOAD'" >> "$WLOG"
 
 echo "[startup] exec dio_manager pid=$DIO_PID monitor=$MONITOR_PID" >> "$WLOG"
 exec "$DIODIR/dio_manager" "$@"
