@@ -64,6 +64,15 @@ cc -std=c99 -O2 -Wall -Wextra -Werror -pedantic -Ihook \
     -o "$OUT/signal_guard"
 "$OUT/signal_guard"
 
+printf '%-32s ' alt_cluster_test
+if [ "$(uname)" = Darwin ]; then FAKE_AIRPLAY=libfakeairplay.dylib; else FAKE_AIRPLAY=libfakeairplay.so; fi
+cc -std=gnu99 -O1 -Wall -Wextra -Werror -Wno-unused-parameter -shared -fPIC \
+    tests/alt_cluster_fake_airplay.c -o "$OUT/$FAKE_AIRPLAY"
+cc -std=gnu99 -O1 -Wall -Wextra -Werror -DENABLE_LOGGING=0 -Ihook \
+    tests/alt_cluster_test.c hook/altcluster/alt_cluster.c \
+    -L"$OUT" -lfakeairplay -Wl,-rpath,"$OUT" -lpthread -o "$OUT/alt_cluster"
+"$OUT/alt_cluster"
+
 printf '%-32s ' bus_transport_test
 cc -std=gnu99 -O2 -Wall -Wextra -Werror \
     -Wno-unused-variable -Wno-unused-but-set-variable -Ihook \

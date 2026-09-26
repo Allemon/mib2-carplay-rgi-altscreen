@@ -114,6 +114,7 @@ public final class ScreenModule implements Module {
         altScreenVideo = ready;
         Log.i(TAG, "AltScreen video " + (ready ? "ready -> ctx " + CTX_CLUSTER_VIDEO : "gone"));
         republish();
+        if (ready) com.luka.carplay.cluster.AltScreenCluster.onVideoReady();
     }
 
     /** Presentation latch, not merely route intent.  RouteGuidance may set true only after the

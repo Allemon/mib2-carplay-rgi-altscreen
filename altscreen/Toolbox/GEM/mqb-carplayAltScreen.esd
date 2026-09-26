@@ -31,3 +31,15 @@ script
 script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/force_start_mmi_cockpit_carplay_rx_test.sh"
    label   "START (alias)"
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_layout_default.sh"
+   label   "Cluster map layout: AltScreen default"
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_layout_top.sh"
+   label   "Cluster map layout: maneuver card on top"
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_layout_right.sh"
+   label   "Cluster map layout: maneuver card on the right"
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_layout_noeta.sh"
+   label   "Cluster map layout: no ETA"

@@ -1,5 +1,7 @@
 {
     global:
+        AirPlayReceiverSessionPlatformFinalize;
+        AirPlayReceiverSessionPlatformInitialize;
         CinemoCreateIAP;
         _ZN12NmeTransport4RecvER8NmeArrayIhE;
         _ZN12NmeTransport4SendEPKhjPj;
