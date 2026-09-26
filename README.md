@@ -9,7 +9,7 @@ Integrates **[MHI2Q-CarPlay-AltScreen](https://github.com/yuedizhibo/MHI2Q-CarPl
 
 ## 🖼️ Gallery
 
-**AltScreen: CarPlay instrument cluster video (Apple Maps) on the Virtual Cockpit**
+**AltScreen: CarPlay instrument cluster video (Google Maps) on the Virtual Cockpit**
 
 <p align="center">
   <img src="assets/gallery/vc_altscreen_classic.jpg" width="45%" />
