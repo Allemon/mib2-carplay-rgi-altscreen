@@ -85,7 +85,6 @@
 - **Вибір схеми розміщення мапи (центрування мітки авто).** Через те, що iOS резервує місце на приладці під власну картку маневру, мітка авто може зміщуватися. Меню MMI-Cockpit-Carplay в GEM містить перемикач **Cluster map layout** з 4 опціями: *AltScreen default*, *maneuver card on top*, *maneuver card on the right* та *no ETA* (застосовується після перепідключення телефону).
 - **Обкладинки альбомів на приладці.** Обкладинка поточного треку відображається на екрані медіа у Virtual Cockpit.
 - **Вікно парктроніка не приховує CarPlay.** Коли вмикається штатний передній парктронік PDC, екран CarPlay залишається активним і не згортається ([деталі](docs/hmi/pdc-small-stage.md)).
-- **Тачпад MMI → DPAD.** Проведення пальцем по тачпаду транслюється у навігацію по меню CarPlay.
 
 ## 🗂️ Структура репозиторію
 
@@ -158,7 +157,7 @@ SD=/Volumes/SD32 STOCK_JAR=MU1329-base.jar ./scripts/build_sd.sh   # ... і за
 ```sh
 ./scripts/run_tests.sh            # C + shell: парсер RGD, шина, обкладинки, кеш шейдерів, супервізор
 ./scripts/test_route_info.sh      # міст Java route-guidance / BAP до штатних інтерфейсів
-./scripts/test_java_transports.sh # Java-шина, сокети рендерера, тачпад
+./scripts/test_java_transports.sh # Java-шина, сокети рендерера
 ./scripts/test_maneuver_native.sh # рушій рендерера + смуги (macOS, ASan/UBSan)
 ```
 

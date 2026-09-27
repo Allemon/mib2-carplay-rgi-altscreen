@@ -25,8 +25,7 @@ throughout:
   arrow-fill distance progress ([bargraph-sync](rgd/bargraph-sync.md)), lane strip ([lane-guidance](rgd/lane-guidance.md)) and scrolling VC
   route text ([vc-route-text](rgd/vc-route-text.md)).
 - **Cover art** - album art forwarded to the VC now-playing widget ([cover-art](hook/cover-art.md)).
-- **Touchpad input** - MMI touchpad drag bridged to DPAD navigation ([touchpad-dpad](input/touchpad-dpad.md)); steering-wheel
-  roller press toggles cluster route-info ([steering-wheel](input/steering-wheel.md)).
+- **Steering-wheel input** - roller press toggles cluster route-info ([steering-wheel](input/steering-wheel.md)).
 
 The maneuver overlay (`maneuver_render`, displayable 98, transparent when idle) composites over the
 head unit's own native map (33): stock ctx 74 at rest, custom ctx 80 `{98,101,102,33}` only while
@@ -38,7 +37,7 @@ byte-identical to stock.
 | Component | Type | Output | Topic |
 |---|---|---|---|
 | `hook/` | C (ARM32 QNX), `LD_PRELOAD` into `dio_manager`; exports exactly 5 interposers | `libcarplay_hook.so` | [iap2-interception](hook/iap2-interception.md) [cover-art](hook/cover-art.md) [integration-seam](hook/integration-seam.md) |
-| `java_patch/` + `java_resources/` | Java 1.4 class overrides loaded by the HMI (`lsd`) + VC glyph table | `carplay_hook.jar` | [rgd-activation](rgd/rgd-activation.md) [display-contexts](cluster/display-contexts.md) [touchpad-dpad](input/touchpad-dpad.md) |
+| `java_patch/` + `java_resources/` | Java 1.4 class overrides loaded by the HMI (`lsd`) + VC glyph table | `carplay_hook.jar` | [rgd-activation](rgd/rgd-activation.md) [display-contexts](cluster/display-contexts.md) |
 | `maneuver_render/` | C EGL/GLES2 + C++11 scene engine (ARM QNX / macOS) | `maneuver_render` | [maneuver-renderer](cluster/maneuver-renderer.md) [compositing](cluster/compositing.md) |
 
 ## 🗂️ Process topology
@@ -68,7 +67,7 @@ already `accept()`ing when the hook connects. Connect sequence: [connect](deploy
 ```mermaid
 flowchart LR
     accTitle: Steady-state data flow
-    accDescr: The hook forwards iPhone iAP2 route guidance and cover art over CarplayBus to the Java patch, which drives maneuver_render and the Virtual Cockpit via BAP; the VC reports visibility and stage back, and the touchpad feeds Java.
+    accDescr: The hook forwards iPhone iAP2 route guidance and cover art over CarplayBus to the Java patch, which drives maneuver_render and the Virtual Cockpit via BAP; the VC reports visibility and stage back.
     ip["iPhone iAP2"] --> hook["hook (dio_manager)"]
     hook -->|EVT_RGD_UPDATE| bus["CarplayBus :19810"]
     hook -->|EVT_COVERART| bus
@@ -77,7 +76,6 @@ flowchart LR
     java -->|BAP FctIDs| vc["Virtual Cockpit"]
     vc -->|"FctID 44 visibility / 54 stage"| java
     rend -->|HU encode -> MOST| vc
-    pad["MMI touchpad"] --> java
 ```
 
 ## 🔄 Threading (highlights)
@@ -110,7 +108,7 @@ Screen/EGL/GLES libs at runtime. `build_hook.sh` also enforces the 5-symbol expo
 ```sh
 ./scripts/run_tests.sh            # C: RGD TLV parser, bus transport, signal guard, state trace, protocol constants
 ./scripts/test_route_info.sh      # Java BAPBridge/RouteGuidance vs stock service interface (text, maneuvers, lanes, viewport)
-./scripts/test_java_transports.sh # CarplayBus / RendererServer sockets, TouchpadController
+./scripts/test_java_transports.sh # CarplayBus / RendererServer sockets
 ./scripts/test_maneuver_native.sh # renderer lane decoder, scene engine, maneuver parity (ASan/UBSan, macOS)
 ./scripts/audit_maneuvers.sh      # offline maneuver -> BAP wire export
 ./scripts/audit_java_stock.sh     # Java linkage against the stock jar

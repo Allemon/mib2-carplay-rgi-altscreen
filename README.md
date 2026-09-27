@@ -112,7 +112,6 @@ features below follow it automatically.
 - **Cover art on the cluster.** The now-playing album art shows on the cluster media screen.
 - **Parking popups no longer hide CarPlay.** When the Audi front PDC / parking view pops up beside it,
   CarPlay stays on screen instead of being replaced ([details](docs/hmi/pdc-small-stage.md)).
-- **MMI touchpad → DPAD bridging** so finger drags navigate CarPlay menus.
 
 ## 🗂️ Repository layout
 
@@ -218,7 +217,7 @@ Host-only, no unit needed:
 ```sh
 ./scripts/run_tests.sh            # C + shell: RGD parser, bus, cover art, shader cache, installer, supervisor
 ./scripts/test_route_info.sh      # Java route-guidance / BAP bridge against the stock interfaces
-./scripts/test_java_transports.sh # Java bus + renderer sockets, touchpad
+./scripts/test_java_transports.sh # Java bus + renderer sockets
 ./scripts/test_maneuver_native.sh # renderer engine + lanes (macOS, ASan/UBSan)
 ```
 

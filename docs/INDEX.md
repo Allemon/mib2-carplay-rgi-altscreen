@@ -37,7 +37,6 @@ final verified fact. `reconciles:` frontmatter records which legacy docs were fo
 - [kdk-geometry](cluster/kdk-geometry.md) - KDK backings 101/102, VC Fct44/Fct54-driven visibility & stage, HU geometry table
 
 ## 🎛️ Input  [x]
-- [touchpad-dpad](input/touchpad-dpad.md) - MMI touchpad -> DPAD bridge (TouchpadController)
 - [steering-wheel](input/steering-wheel.md) - MFW roller: rotation = stock zoom, press = route-info toggle
 
 ## 📱 HMI - head-unit screen  [x]
@@ -74,7 +73,7 @@ Every note carries a `status` recording how its facts were checked.
 |---|---|---|
 | `verified-decompile` | confirmed by reading the disassembly/decompilation of the actual binary | rgd-tlv, rgd-activation, accessoryd-rgd, maps-maneuvers, carkitd-bonjour, display-manager, compositing, kdk-geometry (VC section) |
 | `verified-trace` | confirmed against the actual on-device log / config | connect |
-| `verified-source` | confirmed against this repo's source (ground truth for our own code) | architecture, iap2-interception, bus-protocol, cover-art, integration-seam, maneuver-mapping, bap-fctids, bargraph-sync, lane-guidance, vc-route-text, maneuver-renderer, display-contexts, kdk-geometry (HU), touchpad-dpad, steering-wheel, supervisor-lifecycle, session-lifecycle, java-cleanup-audit, dsi-carkombi, navsd-catalogue |
+| `verified-source` | confirmed against this repo's source (ground truth for our own code) | architecture, iap2-interception, bus-protocol, cover-art, integration-seam, maneuver-mapping, bap-fctids, bargraph-sync, lane-guidance, vc-route-text, maneuver-renderer, display-contexts, kdk-geometry (HU), steering-wheel, supervisor-lifecycle, session-lifecycle, java-cleanup-audit, dsi-carkombi, navsd-catalogue |
 | `partially-verified` | code paths confirmed; some symbols only string-level / inferred | komo-widget-video (gfx-gate chain) |
 | `from-re-notes` | carried faithfully from prior RE notes; not re-verified in the binary this pass | vc-aio-arrow |
 | `abandoned` | investigation record of a feature that was tried and rolled back (not shipped) | phone-tab-gating |
