@@ -116,3 +116,8 @@ sh scripts/test_install_payload.sh
 
 printf '%-32s ' cluster_shift_test
 bash tests/cluster_shift_test.sh
+
+# Every stock-API variant edit must still find its anchor exactly once.
+printf '%-32s ' java_variant_anchors
+VT=$(mktemp -d); python3 tools/java_variant.py mu1003 java_patch "$VT" >/dev/null && rm -rf "$VT" \
+    && echo "java_variant_anchors: mu1003 PASS"
