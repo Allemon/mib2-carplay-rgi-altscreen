@@ -104,3 +104,6 @@ sh scripts/test_install_listing.sh
 
 printf '%-32s ' install_payload_test
 sh scripts/test_install_payload.sh
+
+printf '%-32s ' cluster_shift_test
+bash tests/cluster_shift_test.sh

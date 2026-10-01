@@ -19,6 +19,9 @@ Local changes on top of upstream:
   the live dio_manager preloads;
 - `Toolbox/scripts/cluster_layout*.sh` + four GEM entries "Cluster map layout: ..." write
   `/mnt/app/root/hooks/cluster_ui.url`, which the RGI Java sends to the cluster display as `showUI`;
+- `Toolbox/scripts/cluster_shift*.sh` + four GEM entries "Cluster map shift: ..." write
+  `/mnt/app/root/hooks/cluster_shift.cfg` (`full_dx` / `small_dx`), which the RGI Java applies
+  live to the video plane (displayable 3) on top of the stock small-stage offset;
 - `Toolbox/scripts/dump_cluster_h264.sh` + GEM entry "Dump cluster video to SD (diagnostic)"
   copy the `/carplay111_h264` ring to `MMI-Cockpit-Carplay/logs/h264/`
   (analyse with `../tools/h264_ring_analyze.py`).

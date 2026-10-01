@@ -170,6 +170,7 @@ run_flat_plaintext() {
                 echo "--- mmi-mirror-hmi.state"; cat "$ROOT/tmp/mmi-mirror-hmi.state"
                 echo "--- cluster_geom.cfg"; cat "$ROOT/tmp/cluster_geom.cfg"
                 echo "--- carplay_cluster.ctx"; cat "$ROOT/tmp/carplay_cluster.ctx"
+                echo "--- cluster_ui.url / cluster_shift.cfg"; cat "$ROOT/mnt/app/root/hooks/cluster_ui.url" "$ROOT/mnt/app/root/hooks/cluster_shift.cfg"
                 echo "--- process priorities"; pidin -p maneuver_render -p carplay-alt111-mirror-display -f anp 2>/dev/null
             } > "$flat_state" 2>&1
             flat_plain_append "$flat_state" "$FLAT_DEST/file_state.txt.log" 2>/dev/null || true

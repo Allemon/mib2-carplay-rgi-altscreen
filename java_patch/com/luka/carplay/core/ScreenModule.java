@@ -109,6 +109,7 @@ public final class ScreenModule implements Module {
 
     /** Poll the AltScreen markers; only the switch worker calls this, never under LOCK. */
     private static void refreshAltScreenVideo() {
+        if (connected) com.luka.carplay.cluster.AltScreenPlacement.poll();
         boolean ready = connected && com.luka.carplay.cluster.AltScreenVideo.isReady();
         if (ready == altScreenVideo) return;
         altScreenVideo = ready;

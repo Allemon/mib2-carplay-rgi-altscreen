@@ -306,10 +306,15 @@ public class CombiMapController extends DisplayControllerEvo implements NaviMoKo
         logKDK.log(10000000, "CombiMapController#positionMap layout: %1", layout.getClass().getName());
         int mapX = layout.getIntegerConstant(LC_MAP_X);
         int mapY = layout.getIntegerConstant(LC_MAP_Y);
+        int stageDx = layout.getIntegerConstant(LC_SMALL_STAGE_MAP_DX);
+        int stageDy = layout.getIntegerConstant(LC_SMALL_STAGE_MAP_DY);
+        /* The AltScreen video plane follows the same rule as the stock map planes. */
+        com.luka.carplay.cluster.AltScreenPlacement.onMapPlacement(dm, this.kombiTerminal,
+            layout.getClass().getName(), mapX, mapY, stageDx, stageDy, smallStage);
         if (smallStage) {
             logKDK.log(10000000, "CombiMapController#positionMap adding a small stage offset from the layout");
-            mapX += layout.getIntegerConstant(LC_SMALL_STAGE_MAP_DX);
-            mapY += layout.getIntegerConstant(LC_SMALL_STAGE_MAP_DY);
+            mapX += stageDx;
+            mapY += stageDy;
         }
         logKDK.log(10000000, "CombiMapController#positionMap mapX: %1, mapY: %2", mapX, mapY);
         dm.setPosition(MAP_MAIN, this.kombiTerminal, mapX, mapY);

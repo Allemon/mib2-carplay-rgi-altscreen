@@ -44,5 +44,17 @@ script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_layout_noeta.sh"
    label   "Cluster map layout: no ETA"
 script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_shift_off.sh"
+   label   "Cluster map shift: off"
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_shift_left120.sh"
+   label   "Cluster map shift: left 120 px (Amap/Baidu)"
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_shift_left240.sh"
+   label   "Cluster map shift: left 240 px (Amap/Baidu)"
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_shift_sporttest.sh"
+   label   "Cluster map shift: Sport test (small view -476 px)"
+script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/dump_cluster_h264.sh"
    label   "Dump cluster video to SD (diagnostic)"

@@ -108,3 +108,15 @@ its backing have no view-size dependency (`positionKDKBackgrounds` / `handleKdkD
 view size). Moving the panel by -476 in Sport singlescreen was measured on the car to break a view
 the stock keeps correct, so `ClusterLayerController` **logs the offset but never applies it** to the
 panel.
+
+## 🎬 AltScreen video plane (displayable 3)
+
+`AltScreenPlacement` gives displayable 3 (AltScreen's CarPlay video, ctx 81) the rule stock
+`positionMap()` applies to its own map planes 33/58: map origin (108/109) plus, in the small view,
+the small-stage offset (80/81). On Sport that is `-476,0`, so the video moves with the native map
+instead of showing its left half behind the large dial (AltScreen V3 does the same shift inside its
+mirror renderer). `/mnt/app/root/hooks/cluster_shift.cfg` (GEM "Cluster map shift") adds
+`full_dx` / `small_dx`; it is re-read about four times a second while CarPlay is connected.
+Displayable 3 is written only once some offset is non-zero, and every move is logged as
+`AltPlace video plane -> (x,y) ...` in the RGI Java log. The small-stage offset still never applies
+to the KDK panel (section above).

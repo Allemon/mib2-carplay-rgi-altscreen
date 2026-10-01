@@ -45,6 +45,7 @@ public final class AltScreenCluster {
 
     /** ScreenModule: the AltScreen video just came up on the cluster. */
     public static void onVideoReady() {
+        AltScreenPlacement.onVideoReady();
         String url = readUiUrl();
         if (url == null) return;
         byte[] bytes;

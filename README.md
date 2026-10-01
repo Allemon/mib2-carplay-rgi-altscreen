@@ -109,6 +109,12 @@ features below follow it automatically.
   offset caused by iOS reserving space for its own maneuver card, the MMI-Cockpit-Carplay GEM menu
   provides a **Cluster map layout** selector with four options: *AltScreen default*, *maneuver card on top*,
   *maneuver card on the right*, and *no ETA* (applied on next phone reconnect).
+- **Sport layout and map shift.** In the VC small view the CarPlay video plane gets the stock layout's
+  small-stage offset, like the native map: on Sport (single large dial) it moves 476 px left so the
+  map and vehicle marker sit in the visible left area instead of behind the dial. GEM **Cluster map
+  shift** moves the picture further left for apps that ignore the cluster safe area (Amap, Baidu);
+  *Sport test* reproduces the Sport offset on a Classic cluster. Applied live
+  ([kdk-geometry](docs/cluster/kdk-geometry.md#-altscreen-video-plane-displayable-3)).
 - **Cover art on the cluster.** The now-playing album art shows on the cluster media screen.
 - **Parking popups no longer hide CarPlay.** When the Audi front PDC / parking view pops up beside it,
   CarPlay stays on screen instead of being replaced ([details](docs/hmi/pdc-small-stage.md)).
