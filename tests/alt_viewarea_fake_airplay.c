@@ -82,6 +82,18 @@ static obj* display(const char* uuid, int64_t w, int64_t h, int with_areas) {
     }
     return d;
 }
+/* AltScreen also adds the cluster to the "displays" session property. */
+const void* AirPlayReceiverSessionPlatformCopyProperty(void* session, uint32_t flags, const void* prop,
+                                                       const void* qual, int32_t* err);
+const void* AirPlayReceiverSessionScreen_CopyDisplaysInfo(void* session, int32_t* err);
+const void* AirPlayReceiverSessionPlatformCopyProperty(void* session, uint32_t flags, const void* prop,
+                                                       const void* qual, int32_t* err) {
+    (void)flags; (void)qual;
+    if (strcmp(((const obj*)prop)->str, "displays") == 0)
+        return AirPlayReceiverSessionScreen_CopyDisplaysInfo(session, err);
+    if (err) *err = 0;
+    return CFStringCreateWithCString(NULL, "not-displays", 0x08000100u);
+}
 int fake_copy_calls;
 const void* AirPlayReceiverSessionScreen_CopyDisplaysInfo(void* session, int32_t* err) {
     (void)session; fake_copy_calls++;

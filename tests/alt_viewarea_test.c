@@ -10,6 +10,8 @@
 
 extern int fake_live, fake_copy_calls;
 const void* AirPlayReceiverSessionScreen_CopyDisplaysInfo(void* session, int32_t* err);
+const void* AirPlayReceiverSessionPlatformCopyProperty(void* session, uint32_t flags, const void* prop,
+                                                       const void* qual, int32_t* err);
 long CFArrayGetCount(const void* a);
 const void* CFArrayGetValueAtIndex(const void* a, long i);
 const void* CFDictionaryGetValue(const void* d, const void* k);
@@ -76,6 +78,20 @@ int main(void) {
     CHECK(get(CFArrayGetValueAtIndex(d, 0), "viewAreas") == NULL, "main display untouched");
     CFRelease(d);
 
+    /* The "displays" session property carries the same cluster entry on the car. */
+    const void* k = CFStringCreateWithCString(NULL, "displays", 0x08000100u);
+    int32_t err = 1;
+    d = AirPlayReceiverSessionPlatformCopyProperty(NULL, 0, k, NULL, &err);
+    areas(d, r);
+    CHECK(err == 0 && r[2] == 1134 && r[4] == 306 && r[6] == 828, "displays property rewritten too");
+    CFRelease(d);
+    CFRelease(k);
+    k = CFStringCreateWithCString(NULL, "other", 0x08000100u);
+    d = AirPlayReceiverSessionPlatformCopyProperty(NULL, 0, k, NULL, &err);
+    CHECK(d != NULL, "other properties pass through");
+    CFRelease(d);
+    CFRelease(k);
+
     write_cfg(path, "view 0 0 1200 542\n");
     d = copy();
     areas(d, r);
@@ -94,6 +110,6 @@ int main(void) {
     remove(path);
     CHECK(fake_live == 0, "no CF objects leaked");
     if (failures) return 1;
-    printf("alt_viewarea_test: default kept, view/safe rewritten, invalid refused PASS\n");
+    printf("alt_viewarea_test: default kept, CopyDisplaysInfo + displays property rewritten, invalid refused PASS\n");
     return 0;
 }

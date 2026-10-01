@@ -16,7 +16,9 @@
  * of its schema changes.  The iPhone reads the displays at connect: a new file applies
  * on the next phone connection.  No file, or an invalid one, leaves AltScreen's values.
  *
- * libairplay calls CopyDisplaysInfo through its PLT, so this interposer runs when
+ * AltScreen adds the cluster display in two interposers, CopyDisplaysInfo and
+ * AirPlayReceiverSessionPlatformCopyProperty; both results are rewritten here.
+ * libairplay calls them through its PLT, so these interposers run when
  * libcarplay_hook.so precedes libcarplay_altscreen.so in LD_PRELOAD (carplay_startup.sh);
  * RTLD_NEXT then reaches AltScreen's interposer, which calls stock.
  */
@@ -33,9 +35,13 @@
 DEFINE_LOG_MODULE(ALTVIEW);
 
 #define CF_STRING_ENCODING_UTF8 0x08000100u
+#define ALT_CLUSTER_WIDTH  1440   /* AltScreen's fixed cluster display */
+#define ALT_CLUSTER_HEIGHT 542
 
 typedef const void* CFTypeRef;
 typedef CFTypeRef (*copy_displays_f)(void* session, int32_t* err);
+typedef CFTypeRef (*copy_property_f)(void* session, uint32_t flags, CFTypeRef property,
+                                     CFTypeRef qualifier, int32_t* err);
 typedef long      (*array_count_f)(CFTypeRef array);
 typedef CFTypeRef (*array_at_f)(CFTypeRef array, long index);
 typedef CFTypeRef (*dict_get_f)(CFTypeRef dict, CFTypeRef key);
@@ -79,8 +85,9 @@ static int resolve(void) {
     g.dict_type = (type_id0_f)dlsym(RTLD_DEFAULT, "CFDictionaryGetTypeID");
     g.string_type = (type_id0_f)dlsym(RTLD_DEFAULT, "CFStringGetTypeID");
     g.release = (release_f)dlsym(RTLD_DEFAULT, "CFRelease");
+    /* CFDictionaryGetInt64 is optional: without it the display is taken as AltScreen's fixed size. */
     g.resolved = (g.array_count && g.array_at && g.dict_get && g.dict_set_i64 && g.string_get &&
-                  g.string_create && g.dict_get_i64 && g.type_of && g.array_type && g.dict_type &&
+                  g.string_create && g.type_of && g.array_type && g.dict_type &&
                   g.string_type && g.release) ? 1 : -1;
     if (g.resolved < 0) LOG_WARN(LOG_MODULE, "libairplay CF symbols unavailable; view area untouched");
     return g.resolved > 0;
@@ -140,6 +147,7 @@ static int is(CFTypeRef cf, type_id0_f type) { return cf && g.type_of(cf) == typ
 
 /* AirPlay CFUtils: 0 on success. */
 static int get_i64(CFTypeRef dict, const char* name, int64_t* out) {
+    if (!g.dict_get_i64) return 0;
     CFTypeRef k = key(name);
     if (!k) return 0;
     int32_t err = -1;
@@ -177,19 +185,19 @@ static CFTypeRef find_cluster(CFTypeRef displays) {
 void alt_viewarea_apply(CFTypeRef displays) {
     alt_rect_t view, safe;
     int have_safe;
-    if (!load_config(&view, &safe, &have_safe)) return;     /* no file: AltScreen's values */
-    if (!resolve()) return;
+    if (!displays || !resolve() || !is(displays, g.array_type)) return;
     CFTypeRef cluster = find_cluster(displays);
-    if (!cluster) {
-        LOG_INFO(LOG_MODULE, "cluster display not in displays info; view area untouched");
-        return;
-    }
+    if (!cluster) return;                                    /* not a displays array with ours */
+    if (!load_config(&view, &safe, &have_safe)) return;     /* no file: AltScreen's values */
     int64_t disp_w = 0, disp_h = 0;
+    if (!get_i64(cluster, "widthPixels", &disp_w) || !get_i64(cluster, "heightPixels", &disp_h)) {
+        disp_w = ALT_CLUSTER_WIDTH;
+        disp_h = ALT_CLUSTER_HEIGHT;
+    }
     CFTypeRef areas = get(cluster, "viewAreas");
     CFTypeRef area = is(areas, g.array_type) && g.array_count(areas) > 0 ? g.array_at(areas, 0) : NULL;
     CFTypeRef safe_dict = is(area, g.dict_type) ? get(area, "safeArea") : NULL;
-    if (!get_i64(cluster, "widthPixels", &disp_w) || !get_i64(cluster, "heightPixels", &disp_h)
-            || !is(area, g.dict_type) || !is(safe_dict, g.dict_type)) {
+    if (!is(area, g.dict_type) || !is(safe_dict, g.dict_type)) {
         LOG_WARN(LOG_MODULE, "unexpected AltScreen cluster schema; view area untouched");
         return;
     }
@@ -217,4 +225,20 @@ HOOK_EXPORT CFTypeRef AirPlayReceiverSessionScreen_CopyDisplaysInfo(void* sessio
     CFTypeRef displays = next(session, err);
     if (displays && hook_process_is_dio_manager()) alt_viewarea_apply(displays);
     return displays;
+}
+
+/* AltScreen also appends the cluster display to the "displays" session property, which is
+ * where the iPhone's /info gets it on the car (CopyDisplaysInfo alone changed nothing). */
+HOOK_EXPORT CFTypeRef AirPlayReceiverSessionPlatformCopyProperty(void* session, uint32_t flags,
+                                                                CFTypeRef property, CFTypeRef qualifier,
+                                                                int32_t* err) {
+    static copy_property_f next;
+    if (!next) next = (copy_property_f)dlsym(RTLD_NEXT, "AirPlayReceiverSessionPlatformCopyProperty");
+    if (!next) {
+        if (err) *err = -6700;
+        return NULL;
+    }
+    CFTypeRef value = next(session, flags, property, qualifier, err);
+    if (value && hook_process_is_dio_manager()) alt_viewarea_apply(value);
+    return value;
 }
