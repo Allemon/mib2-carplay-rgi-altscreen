@@ -51,7 +51,7 @@ grep -q "\"CARPLAY_PRELOAD_EXTRA=/mnt/app/root/carplay-altscreen/lib/libcarplay_
 H=$ROOT/mnt/app/root/hooks
 sed -n "/^INHERITED_PRELOAD=/,/^echo \"\\[startup\\] preload/p" $H/carplay_startup.sh > /tmp/pre.sh
 got=$(env -u LD_PRELOAD CARPLAY_PRELOAD_EXTRA=/mnt/app/root/carplay-altscreen/lib/libcarplay_altscreen.so H=/mnt/app/root/hooks WLOG=/dev/null /bin/sh -c ". /tmp/pre.sh; echo \$LD_PRELOAD")
-[ "$got" = /mnt/app/root/carplay-altscreen/lib/libcarplay_altscreen.so:/mnt/app/root/hooks/libcarplay_hook.so ] \
+[ "$got" = /mnt/app/root/hooks/libcarplay_hook.so:/mnt/app/root/carplay-altscreen/lib/libcarplay_altscreen.so ] \
     && echo "  ok   wrapper: dio_manager preload $got" || { echo "  FAIL wrapper preload: $got"; fails=$((fails+1)); }
 
 run start ./start_mmi_cockpit_carplay_rx_test.sh   # the ARM mirror binary cannot run here

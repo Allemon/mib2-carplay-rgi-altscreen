@@ -10,10 +10,10 @@
  * mirror renderer; here the plane itself moves, exactly as stock moves its map.
  *
  * On top of that /mnt/app/root/hooks/cluster_shift.cfg (GEM "Cluster map shift") may add a
- * horizontal offset per view:  full_dx=<px>  small_dx=<px>  (|dx| <= 720).  Navigation apps
- * that ignore the cluster's safe area (Amap, Baidu) draw the vehicle right of centre; a
- * negative full_dx moves the whole picture left.  small_dx=-476 on Classic reproduces what
- * Sport does, so the mechanism can be checked on a Classic-only car.
+ * horizontal offset per view:  full_dx=<px>  small_dx=<px>  (|dx| <= 720).  GEM only writes
+ * small_dx=-476 ("Sport test"): on Classic it reproduces what Sport does, so the mechanism can
+ * be checked on a Classic-only car.  (Amap / Baidu centring is the hook's view area instead,
+ * hook/altcluster/alt_viewarea.c.)
  *
  * Displayable 3 is only touched once a non-zero offset is wanted; after that it is always
  * written (back to the map origin when the offset returns to zero).

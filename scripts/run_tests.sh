@@ -73,6 +73,15 @@ cc -std=gnu99 -O1 -Wall -Wextra -Werror -DENABLE_LOGGING=0 -Ihook \
     -L"$OUT" -lfakeairplay -Wl,-rpath,"$OUT" -lpthread -o "$OUT/alt_cluster"
 "$OUT/alt_cluster"
 
+printf '%-32s ' alt_viewarea_test
+if [ "$(uname)" = Darwin ]; then FAKE_VA=libfakeairplay_va.dylib; else FAKE_VA=libfakeairplay_va.so; fi
+cc -std=gnu99 -O1 -Wall -Wextra -Werror -Wno-unused-parameter -shared -fPIC \
+    tests/alt_viewarea_fake_airplay.c -o "$OUT/$FAKE_VA"
+cc -std=gnu99 -O1 -Wall -Wextra -Werror -DENABLE_LOGGING=0 -Ihook \
+    tests/alt_viewarea_test.c hook/altcluster/alt_viewarea.c \
+    -L"$OUT" -lfakeairplay_va -Wl,-rpath,"$OUT" -ldl -o "$OUT/alt_viewarea"
+"$OUT/alt_viewarea"
+
 printf '%-32s ' bus_transport_test
 cc -std=gnu99 -O2 -Wall -Wextra -Werror \
     -Wno-unused-variable -Wno-unused-but-set-variable -Ihook \

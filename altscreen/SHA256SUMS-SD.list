@@ -37,9 +37,12 @@ Toolbox/scripts/cluster_layout_default.sh
 Toolbox/scripts/cluster_layout_noeta.sh
 Toolbox/scripts/cluster_layout_right.sh
 Toolbox/scripts/cluster_layout_top.sh
+Toolbox/scripts/cluster_area.sh
+Toolbox/scripts/cluster_area_full.sh
+Toolbox/scripts/cluster_area_w1080.sh
+Toolbox/scripts/cluster_area_w1140.sh
+Toolbox/scripts/cluster_area_w1200.sh
 Toolbox/scripts/cluster_shift.sh
-Toolbox/scripts/cluster_shift_left120.sh
-Toolbox/scripts/cluster_shift_left240.sh
 Toolbox/scripts/cluster_shift_off.sh
 Toolbox/scripts/cluster_shift_sporttest.sh
 Toolbox/scripts/dump_cluster_h264.sh

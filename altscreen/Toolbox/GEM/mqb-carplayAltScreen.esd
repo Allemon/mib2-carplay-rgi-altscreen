@@ -44,14 +44,20 @@ script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_layout_noeta.sh"
    label   "Cluster map layout: no ETA"
 script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_area_full.sh"
+   label   "Cluster map area: full (AltScreen)"
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_area_w1200.sh"
+   label   "Cluster map area: 1200 px (Amap/Baidu)"
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_area_w1140.sh"
+   label   "Cluster map area: 1140 px (Amap/Baidu)"
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_area_w1080.sh"
+   label   "Cluster map area: 1080 px (Amap/Baidu)"
+script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_shift_off.sh"
    label   "Cluster map shift: off"
-script
-   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_shift_left120.sh"
-   label   "Cluster map shift: left 120 px (Amap/Baidu)"
-script
-   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_shift_left240.sh"
-   label   "Cluster map shift: left 240 px (Amap/Baidu)"
 script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_shift_sporttest.sh"
    label   "Cluster map shift: Sport test (small view -476 px)"

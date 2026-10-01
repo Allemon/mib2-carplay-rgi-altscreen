@@ -49,6 +49,7 @@ docker run --rm --platform=linux/amd64 -v "$PROJECT_DIR":/src "$IMG" bash -c '
         framework/iap2_protocol.c framework/hook_framework.c \
         routeguidance/rgd_tlv.c routeguidance/rgd_hook.c coverart/jpeg_safety.c coverart/coverart_stream.c coverart/coverart_hook.c \
         altcluster/alt_cluster.c \
+        altcluster/alt_viewarea.c \
         main.c"
   $CC -shared -fPIC -O2 -std=gnu99 -fvisibility=hidden -fdata-sections -ffunction-sections '"$CFLAGS_EXTRA"' \
       -I. $SRCS -o /src/build/libcarplay_hook.so -Wl,--gc-sections \

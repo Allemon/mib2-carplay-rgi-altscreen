@@ -120,3 +120,9 @@ mirror renderer). `/mnt/app/root/hooks/cluster_shift.cfg` (GEM "Cluster map shif
 Displayable 3 is written only once some offset is non-zero, and every move is logged as
 `AltPlace video plane -> (x,y) ...` in the RGI Java log. The small-stage offset still never applies
 to the KDK panel (section above).
+
+The vehicle position inside the video is the iPhone's choice, not the plane's: apps that ignore
+the cluster safe area (Amap, Baidu) lay out against the view area. `hook/altcluster/alt_viewarea.c`
+rewrites the view area / safe area AltScreen reports for the cluster display from
+`/mnt/app/root/hooks/cluster_viewarea.cfg` (GEM "Cluster map area", next phone connect); the
+presets keep the view area at the left edge and centre the safe area on x=720.
