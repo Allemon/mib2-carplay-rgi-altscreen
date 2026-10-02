@@ -48,7 +48,7 @@ skipFileCopyCrc = "true"
 skipCheckVariant = "true"
 skipCheckRegion = "true"
 FinalScript = "./Toolbox/final/finalScript.sh"
-FinalScriptChecksum = "5478e2177180c1654b2fbe2ea307078eb1ea0a26"
+FinalScriptChecksum = "b1fc8feba6e9cd8ca77d32877e4bc46e4436ef8e"
 FinalScriptMaxTime = "30"
 FinalScriptName = "Final Script"
 
