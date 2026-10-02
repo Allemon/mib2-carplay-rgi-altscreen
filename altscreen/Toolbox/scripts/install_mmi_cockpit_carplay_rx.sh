@@ -29,7 +29,17 @@ else
     done
 fi
 
-[ -n "$VOLUME" ] || { echo "FAIL: no Toolbox SD card discovered"; exit 1; }
+if [ -z "$VOLUME" ]; then
+    echo "FAIL: no Toolbox SD card discovered"
+    # A card with AltScreen but no HMI JAR was not built completely by scripts/build_sd.sh.
+    for candidate in /net/mmx/fs/sda0 /net/mmx/fs/sda1 /net/mmx/fs/sdb0 /net/mmx/fs/sdb1 /fs/sda0 /fs/sda1 /fs/sdb0 /fs/sdb1; do
+        [ -s "$candidate/Toolbox/carplay_alt_screen/universal/libcarplay_altscreen.so" ] || continue
+        echo "  $candidate has Toolbox/carplay_alt_screen/universal/libcarplay_altscreen.so"
+        echo "  but no Toolbox/carplay_alt_screen/hmi/carplay_hook-basevideo3.jar:"
+        echo "  rebuild the card with scripts/build_sd.sh (it must end with 'card verified')"
+    done
+    exit 1
+fi
 CONTROLLER="$VOLUME/Toolbox/scripts/altscreen_chain_test.sh"
 RGI_COMPANION="$VOLUME/Toolbox/scripts/rgi_companion.sh"
 MIRROR_RELEASE="$VOLUME/Toolbox/carplay_alt_screen/mirror_display/release"
