@@ -162,6 +162,7 @@ remove_files(){
         [ ! -e "$HOOKS/$name" ] || return 1
     done
     rm -f "$HOOKS/cluster_ui.url" "$HOOKS/cluster_fps" "$HOOKS/cluster_shift.cfg" "$HOOKS/cluster_viewarea.cfg"   # GEM cluster choices
+    rm -f "$(p /mnt/app/carplay_verbose)" 2>/dev/null   # GEM "RGI verbose logs"
     rmdir "$HOOKS" 2>/dev/null || true
 }
 

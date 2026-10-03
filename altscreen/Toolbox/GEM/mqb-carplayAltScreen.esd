@@ -62,5 +62,11 @@ script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_shift_sporttest.sh"
    label   "Cluster map shift: Sport test (small view -476 px)"
 script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/rgi_verbose_on.sh"
+   label   "RGI verbose logs: on (diagnostic)"
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/rgi_verbose_off.sh"
+   label   "RGI verbose logs: off"
+script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/dump_cluster_h264.sh"
    label   "Dump cluster video to SD (diagnostic)"

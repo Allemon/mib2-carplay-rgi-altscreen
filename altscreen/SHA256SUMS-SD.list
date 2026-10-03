@@ -43,6 +43,9 @@ Toolbox/scripts/cluster_area_w1080.sh
 Toolbox/scripts/cluster_area_w1140.sh
 Toolbox/scripts/cluster_area_w1200.sh
 Toolbox/scripts/cluster_shift.sh
+Toolbox/scripts/rgi_verbose.sh
+Toolbox/scripts/rgi_verbose_off.sh
+Toolbox/scripts/rgi_verbose_on.sh
 Toolbox/scripts/cluster_shift_off.sh
 Toolbox/scripts/cluster_shift_sporttest.sh
 Toolbox/scripts/dump_cluster_h264.sh

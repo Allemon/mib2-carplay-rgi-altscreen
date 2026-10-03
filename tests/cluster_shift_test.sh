@@ -22,4 +22,6 @@ sh "$S/cluster_shift_sporttest.sh" >/dev/null && [ "$(cat "$H/cluster_shift.cfg"
 sh "$S/cluster_shift_off.sh" >/dev/null && [ ! -e "$H/cluster_shift.cfg" ] || { echo "FAIL shift off"; exit 1; }
 ! sh "$S/cluster_area.sh" bogus >/dev/null || { echo "FAIL: bad area accepted"; exit 1; }
 ! sh "$S/cluster_shift.sh" left120 >/dev/null || { echo "FAIL: removed shift accepted"; exit 1; }
-echo "cluster_shift_test: map area 1200/1140/1080/full, Sport test/off PASS"
+sh "$S/rgi_verbose_on.sh" >/dev/null && [ -e "$T/mnt/app/carplay_verbose" ] || { echo "FAIL verbose on"; exit 1; }
+sh "$S/rgi_verbose_off.sh" >/dev/null && [ ! -e "$T/mnt/app/carplay_verbose" ] || { echo "FAIL verbose off"; exit 1; }
+echo "cluster_shift_test: map area 1200/1140/1080/full, Sport test/off, verbose on/off PASS"
