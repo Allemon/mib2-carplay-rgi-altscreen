@@ -481,7 +481,11 @@ restore_originals() (
         [ -n "$rel" ] || continue
         src="$BACKUP_DIR/files/$(echo "$rel" | tr '/' '_')"; dst=$(p "$rel"); mode=755
         case "$rel" in *.json) mode=644 ;; esac
-        stage_and_publish "$src" "$dst" "$mode" || return 1
+        # The universal profile never writes dio_manager / libairplay / libNmeBaseClasses, and
+        # on some units (MU1003) /eso/bin/apps is read-only: a file that already matches its
+        # backup needs no publish.
+        if same_bytes "$src" "$dst"; then say "RESTORE_UNCHANGED=$rel"; continue; fi
+        stage_and_publish "$src" "$dst" "$mode" || { say "FAIL: cannot restore $rel"; return 1; }
         same_bytes "$src" "$dst" || return 1
     done < "$BACKUP_MANIFEST"
     restore_overlay_baseline || return 1

@@ -67,6 +67,9 @@ need status "RGI_DIO_IDS=5/5"
 run restore ./stop_mmi_cockpit_carplay_test.sh
 need restore "RGI_NATIVE=REMOVED"
 need restore "RESTORE=PASS integrated"
+# Untouched stock binaries are not rewritten (/eso is read-only on some units, e.g. MU1003).
+need restore "RESTORE_UNCHANGED=/eso/bin/apps/dio_manager"
+need restore "RESTORE_UNCHANGED=/eso/lib/libairplay.so"
 [ ! -e $H ] && [ ! -e $ROOT/mnt/app/eso/hmi/lsd/jars/carplay_hook.jar ] \
     && echo "  ok   restore: hooks and JAR removed" || { echo "  FAIL restore: files left"; fails=$((fails+1)); }
 cmp -s /tmp/dio.orig $P/dio_manager.json && cmp -s /tmp/si.orig $P/smartphone_integrator.json \
