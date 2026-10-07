@@ -55,6 +55,7 @@ public final class CarplayBus {
     public static final int CMD_ALT_ZONE_ACK   = 0x0112;   /* hook->Java [u8 mode][i32 LE status]       */
     public static final int CMD_ALT_UICTX      = 0x0115;   /* UTF-8 maps:/car/instrumentcluster URL -> showUI */
     public static final int CMD_ALT_RGI        = 0x0116;   /* [u8 0=off 1=on] confirmed RGI presentation */
+    public static final int CMD_ALT_NIGHT      = 0x0117;   /* [u8 0] cluster video up: hook re-sends the day/night mode */
 
     public interface Listener {
         void onFrame(int type, int flags, byte[] payload, int len);

@@ -227,6 +227,31 @@ HOOK_EXPORT CFTypeRef AirPlayReceiverSessionScreen_CopyDisplaysInfo(void* sessio
     return displays;
 }
 
+/* The head unit reports its day/night mode to the phone as the "nightMode" session
+ * property.  Record it for CMD_ALT_NIGHT (alt_cluster.c). */
+static void observe_night(CFTypeRef property, CFTypeRef value) {
+    static const CFTypeRef* bool_true;
+    static const CFTypeRef* bool_false;
+    static int tried;
+    char name[32];
+    if (!value || !is(property, g.string_type)) return;
+    if (!g.string_get(property, name, sizeof(name), CF_STRING_ENCODING_UTF8) || strcmp(name, "nightMode") != 0)
+        return;
+    if (!tried) {
+        tried = 1;
+        bool_true = (const CFTypeRef*)dlsym(RTLD_DEFAULT, "kCFLBooleanTrue");
+        bool_false = (const CFTypeRef*)dlsym(RTLD_DEFAULT, "kCFLBooleanFalse");
+    }
+    if (bool_true && *bool_true && value == *bool_true) alt_cluster_set_night(1);
+    else if (bool_false && *bool_false && value == *bool_false) alt_cluster_set_night(0);
+    else {
+        LOG_WARN(LOG_MODULE, "nightMode property is not a CF boolean (type %lu); night sync unavailable",
+                 g.type_of(value));
+        return;
+    }
+    LOG_INFO(LOG_MODULE, "head unit nightMode property = %s", alt_cluster_night() ? "night" : "day");
+}
+
 /* AltScreen also appends the cluster display to the "displays" session property, which is
  * where the iPhone's /info gets it on the car (CopyDisplaysInfo alone changed nothing). */
 HOOK_EXPORT CFTypeRef AirPlayReceiverSessionPlatformCopyProperty(void* session, uint32_t flags,
@@ -239,6 +264,25 @@ HOOK_EXPORT CFTypeRef AirPlayReceiverSessionPlatformCopyProperty(void* session, 
         return NULL;
     }
     CFTypeRef value = next(session, flags, property, qualifier, err);
-    if (value && hook_process_is_dio_manager()) alt_viewarea_apply(value);
+    if (value && hook_process_is_dio_manager()) {
+        alt_viewarea_apply(value);
+        if (resolve()) observe_night(property, value);
+    }
+    return value;
+}
+
+/* The head unit logs "<AIRPLAY_SERVER> Property: nightMode": the day/night mode is asked for
+ * through the SERVER-level platform callback, not the session one.  Same signature. */
+HOOK_EXPORT CFTypeRef AirPlayReceiverServerPlatformCopyProperty(void* server, uint32_t flags,
+                                                               CFTypeRef property, CFTypeRef qualifier,
+                                                               int32_t* err) {
+    static copy_property_f next;
+    if (!next) next = (copy_property_f)dlsym(RTLD_NEXT, "AirPlayReceiverServerPlatformCopyProperty");
+    if (!next) {
+        if (err) *err = -6700;
+        return NULL;
+    }
+    CFTypeRef value = next(server, flags, property, qualifier, err);
+    if (value && hook_process_is_dio_manager() && resolve()) observe_night(property, value);
     return value;
 }

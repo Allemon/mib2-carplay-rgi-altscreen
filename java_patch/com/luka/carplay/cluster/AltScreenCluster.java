@@ -6,6 +6,11 @@
  *   each stock MapScale step also zooms the iPhone's cluster map (the hook sends the
  *   AirPlay "changeMapZoomLevel" command).  Stock still zooms its own hidden map.
  *
+ *   Day/night -> CMD_ALT_NIGHT: Google Maps starts the cluster display in its night look
+ *   although the head unit gave the phone day mode; when the video comes up the hook
+ *   re-sends the mode the head unit reported (setNightMode), now and once more shortly
+ *   after, because the phone builds the cluster UI a moment after the first frame.
+ *
  *   Cluster UI context -> CMD_ALT_UICTX: if /mnt/app/root/hooks/cluster_ui.url holds a
  *   maps:/car/instrumentcluster URL, it is sent as "showUI" each time the video comes
  *   up, after AltScreen's own request.  The file is written by the MMI-Cockpit-Carplay
@@ -46,6 +51,8 @@ public final class AltScreenCluster {
     /** ScreenModule: the AltScreen video just came up on the cluster. */
     public static void onVideoReady() {
         AltScreenPlacement.onVideoReady();
+        sendNightSync();
+        scheduleNightSync();
         String url = readUiUrl();
         if (url == null) return;
         byte[] bytes;
@@ -53,6 +60,31 @@ public final class AltScreenCluster {
         catch (Throwable t) { return; }
         boolean sent = CarplayBus.getInstance().sendBinary(CarplayBus.CMD_ALT_UICTX, bytes);
         Log.i(TAG, "cluster showUI " + url + (sent ? "" : " (bus down)"));
+    }
+
+    /** Asks the hook to re-send the day/night mode to the phone (no-op without a known mode). */
+    static void sendNightSync() {
+        boolean sent = CarplayBus.getInstance().sendBinary(CarplayBus.CMD_ALT_NIGHT, new byte[] { 0 });
+        Log.i(TAG, "cluster day/night sync" + (sent ? "" : " (bus down)"));
+    }
+
+    /** One more request ~3 s later; only the latest video start may fire it. */
+    private static int nightSyncGeneration;
+
+    private static void scheduleNightSync() {
+        final int generation;
+        synchronized (AltScreenCluster.class) { generation = ++nightSyncGeneration; }
+        Thread t = new Thread(new Runnable() {
+            public void run() {
+                try { Thread.sleep(3000L); } catch (InterruptedException e) { return; }
+                synchronized (AltScreenCluster.class) {
+                    if (generation != nightSyncGeneration || !ScreenModule.isAltScreenVideo()) return;
+                }
+                sendNightSync();
+            }
+        }, "AltNightSync");
+        t.setDaemon(true);
+        t.start();
     }
 
     static String readUiUrl() {

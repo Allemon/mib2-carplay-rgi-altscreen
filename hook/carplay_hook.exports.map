@@ -3,6 +3,8 @@
         AirPlayReceiverSessionPlatformFinalize;
         AirPlayReceiverSessionPlatformInitialize;
         AirPlayReceiverSessionPlatformCopyProperty;
+        AirPlayReceiverServerPlatformCopyProperty;
+        AirPlayReceiverSessionSetNightMode;
         AirPlayReceiverSessionScreen_CopyDisplaysInfo;
         CinemoCreateIAP;
         _ZN12NmeTransport4RecvER8NmeArrayIhE;
