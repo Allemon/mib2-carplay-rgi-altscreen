@@ -108,6 +108,10 @@
 #define CMD_ALT_RGI             0x0116  /* binary [u8 0=off 1=on] — Java's     */
                                         /* confirmed RGI presentation; hook    */
                                         /* picks the Maps cluster URL (showUI) */
+#define CMD_ALT_NIGHT           0x0117  /* binary [u8 0] — Java: the cluster   */
+                                        /* video is up; hook re-sends the      */
+                                        /* day/night mode the head unit gave   */
+                                        /* the phone (setNightMode)            */
 /* NOTE: dispatchable inbound types must be < MAX_TYPES in bus.c (grown to      */
 /* cover this 0x11x block).                                                     */
 

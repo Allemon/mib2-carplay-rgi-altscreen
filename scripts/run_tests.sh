@@ -69,6 +69,7 @@ if [ "$(uname)" = Darwin ]; then FAKE_AIRPLAY=libfakeairplay.dylib; else FAKE_AI
 cc -std=gnu99 -O1 -Wall -Wextra -Werror -Wno-unused-parameter -shared -fPIC \
     tests/alt_cluster_fake_airplay.c -o "$OUT/$FAKE_AIRPLAY"
 cc -std=gnu99 -O1 -Wall -Wextra -Werror -DENABLE_LOGGING=0 -Ihook \
+    '-DALT_NIGHT_SYNC_OFF="/tmp/alt_cluster_test.no_night_sync"' -DALT_NIGHT_KICK_DELAY_US=20000 \
     tests/alt_cluster_test.c hook/altcluster/alt_cluster.c \
     -L"$OUT" -lfakeairplay -Wl,-rpath,"$OUT" -lpthread -o "$OUT/alt_cluster"
 "$OUT/alt_cluster"

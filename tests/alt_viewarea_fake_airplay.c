@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { T_STRING = 1, T_NUMBER, T_DICT, T_ARRAY };
+enum { T_STRING = 1, T_NUMBER, T_DICT, T_ARRAY, T_BOOL };
 typedef struct obj {
     int kind, refs, count;
     char str[64];
@@ -16,6 +16,12 @@ typedef struct obj {
 } obj;
 
 int fake_live;
+/* CF booleans are shared constants (kCFLBooleanTrue/False are variables on the unit). */
+static obj fake_bool_true = { .kind = T_BOOL, .refs = 1 << 20 };
+static obj fake_bool_false = { .kind = T_BOOL, .refs = 1 << 20 };
+const void* kCFLBooleanTrue = &fake_bool_true;
+const void* kCFLBooleanFalse = &fake_bool_false;
+int fake_night_value;   /* what the "nightMode" property returns: 0 day, 1 night, 2 = a string (not a boolean) */
 static obj* mk(int kind) { obj* o = calloc(1, sizeof(*o)); o->kind = kind; o->refs = 1; fake_live++; return o; }
 const void* CFRetain(const void* cf) { ((obj*)cf)->refs++; return cf; }
 void CFRelease(const void* cf) {
@@ -92,6 +98,10 @@ const void* AirPlayReceiverSessionPlatformCopyProperty(void* session, uint32_t f
     if (strcmp(((const obj*)prop)->str, "displays") == 0)
         return AirPlayReceiverSessionScreen_CopyDisplaysInfo(session, err);
     if (err) *err = 0;
+    if (strcmp(((const obj*)prop)->str, "nightMode") == 0) {
+        if (fake_night_value == 2) return CFStringCreateWithCString(NULL, "n/a", 0x08000100u);
+        return fake_night_value ? &fake_bool_true : &fake_bool_false;
+    }
     return CFStringCreateWithCString(NULL, "not-displays", 0x08000100u);
 }
 int fake_copy_calls;
@@ -102,4 +112,15 @@ const void* AirPlayReceiverSessionScreen_CopyDisplaysInfo(void* session, int32_t
     a->values[a->count++] = display("main-display", 800, 480, 0);
     a->values[a->count++] = display("b7e6c5a0-2222-4000-8000-000000000002", 1440, 542, 1);
     return a;
+}
+
+/* Server-level platform callback (the head unit asks for nightMode here). */
+const void* AirPlayReceiverServerPlatformCopyProperty(void* server, uint32_t flags, const void* prop,
+                                                      const void* qual, int32_t* err);
+const void* AirPlayReceiverServerPlatformCopyProperty(void* server, uint32_t flags, const void* prop,
+                                                      const void* qual, int32_t* err) {
+    (void)server; (void)flags; (void)qual;
+    if (err) *err = 0;
+    if (strcmp(((const obj*)prop)->str, "nightMode") == 0) return fake_night_value ? &fake_bool_true : &fake_bool_false;
+    return CFStringCreateWithCString(NULL, "x", 0x08000100u);
 }

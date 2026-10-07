@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { FAKE_STRING = 1, FAKE_NUMBER, FAKE_DICT };
+enum { FAKE_STRING = 1, FAKE_NUMBER, FAKE_DICT, FAKE_BOOL };
 typedef struct fake_obj {
     int kind;
     int refs;
@@ -24,6 +24,12 @@ int fake_platform_fini_calls;
 int fake_send_calls;
 void* fake_last_session;
 char fake_last_request[1024];
+
+/* kCFLBooleanTrue / kCFLBooleanFalse are variables holding the shared constants. */
+static fake_obj fake_true_obj = { .kind = FAKE_BOOL, .refs = 1 << 20, .num = 1 };
+static fake_obj fake_false_obj = { .kind = FAKE_BOOL, .refs = 1 << 20, .num = 0 };
+const void* kCFLBooleanTrue = &fake_true_obj;
+const void* kCFLBooleanFalse = &fake_false_obj;
 
 const char kCFLDictionaryKeyCallBacksCFLTypes[24];
 const char kCFLDictionaryValueCallBacksCFLTypes[20];
@@ -79,6 +85,7 @@ static void fake_dump(const fake_obj* o, char* out, size_t cap) {
     size_t len = strlen(out);
     if (o->kind == FAKE_STRING) { snprintf(out + len, cap - len, "%s", o->str); return; }
     if (o->kind == FAKE_NUMBER) { snprintf(out + len, cap - len, "%lld", (long long)o->num); return; }
+    if (o->kind == FAKE_BOOL) { snprintf(out + len, cap - len, "%s", o->num ? "true" : "false"); return; }
     snprintf(out + len, cap - len, "{");
     for (int i = 0; i < o->count; i++) {
         len = strlen(out);
@@ -107,4 +114,13 @@ int32_t AirPlayReceiverSessionPlatformInitialize(void* session) {
 void AirPlayReceiverSessionPlatformFinalize(void* session) {
     (void)session;
     fake_platform_fini_calls++;
+}
+
+int fake_set_night_calls;
+uintptr_t fake_set_night_arg;
+int32_t AirPlayReceiverSessionSetNightMode(void* session, uintptr_t a, uintptr_t b, uintptr_t c) {
+    (void)session; (void)b; (void)c;
+    fake_set_night_calls++;
+    fake_set_night_arg = a;
+    return 0;
 }

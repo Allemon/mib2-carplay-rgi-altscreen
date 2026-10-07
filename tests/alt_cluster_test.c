@@ -9,12 +9,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 extern int fake_live_objects, fake_platform_init_calls, fake_platform_fini_calls, fake_send_calls;
 extern void* fake_last_session;
 extern char fake_last_request[1024];
 
 int32_t AirPlayReceiverSessionPlatformInitialize(void* session);
+int32_t AirPlayReceiverSessionSetNightMode(void* session, uintptr_t a, uintptr_t b, uintptr_t c);
+extern int fake_set_night_calls;
+extern uintptr_t fake_set_night_arg;
 void AirPlayReceiverSessionPlatformFinalize(void* session);
 
 /* ---- framework stubs ---- */
@@ -29,6 +33,12 @@ static int failures;
 static void deliver(uint16_t type, const void* payload, uint32_t len) {
     CHECK(handlers[type] != NULL, "handler registered");
     if (handlers[type]) handlers[type](type, 0, payload, len, NULL);
+}
+
+/* The night re-sync runs in a short thread (opposite mode, then the real one). */
+static void wait_sends(int expected) {
+    for (int i = 0; i < 400 && fake_send_calls < expected; i++) usleep(5000);
+    usleep(30000);   /* nothing extra may follow */
 }
 
 static void zoom(int8_t step) { deliver(CMD_ALT_ZOOM, &step, 1); }
@@ -79,6 +89,52 @@ int main(void) {
     deliver(CMD_ALT_UICTX, big, sizeof(big));
     CHECK(fake_send_calls == 8, "oversized URL rejected");
 
+    /* The head unit's own SetNightMode calls are observed and forwarded untouched. */
+    CHECK(AirPlayReceiverSessionSetNightMode(&session_a, 1, 7, 9) == 0 && fake_set_night_calls == 1 && fake_set_night_arg == 1,
+          "SetNightMode(night) forwarded");
+    CHECK(alt_cluster_night() == 1, "SetNightMode(night) recorded");
+    AirPlayReceiverSessionSetNightMode(&session_a, 0, 0, 0);
+    CHECK(fake_set_night_calls == 2 && fake_set_night_arg == 0 && alt_cluster_night() == 0, "SetNightMode(day) recorded and forwarded");
+    alt_cluster_set_night(-1);
+
+    /* Day/night re-sync (CMD_ALT_NIGHT): the mode the head unit gave the phone is sent in the stock
+     * setNightMode shape, without a display UUID; nothing is sent while the mode is unknown. */
+    int before_night = fake_send_calls;
+    CHECK(alt_cluster_night() == -1, "night state starts unknown");
+    deliver(CMD_ALT_NIGHT, "\0", 1);
+    wait_sends(before_night + 1);
+    CHECK(fake_send_calls == before_night, "no night command without an observed mode");
+    alt_cluster_set_night(0);
+    deliver(CMD_ALT_NIGHT, "\0", 1);
+    wait_sends(before_night + 2);
+    CHECK(fake_send_calls == before_night + 2, "day: kick (night) then the real mode (day)");
+    CHECK(strcmp(fake_last_request, "{type=setNightMode,params={nightMode=false}}") == 0, "day request goes last");
+    alt_cluster_set_night(1);
+    deliver(CMD_ALT_NIGHT, "\0", 1);
+    wait_sends(before_night + 4);
+    CHECK(fake_send_calls == before_night + 4, "night: kick (day) then the real mode (night)");
+    CHECK(strcmp(fake_last_request, "{type=setNightMode,params={nightMode=true}}") == 0, "night request goes last");
+    {
+        FILE* off = fopen(ALT_NIGHT_SYNC_OFF, "w");
+        CHECK(off != NULL, "create the switch file");
+        if (off) {
+            fclose(off);
+            deliver(CMD_ALT_NIGHT, "\0", 1);
+            wait_sends(before_night + 5);
+            CHECK(fake_send_calls == before_night + 4, "switch file disables the sync");
+            remove(ALT_NIGHT_SYNC_OFF);
+            deliver(CMD_ALT_NIGHT, "\0", 1);
+            wait_sends(before_night + 6);
+            CHECK(fake_send_calls == before_night + 6, "sync resumes without the file");
+        }
+    }
+    /* Two requests in a row (video ready + the 3 s repeat) while a kick runs: one kick only. */
+    deliver(CMD_ALT_NIGHT, "\0", 1);
+    deliver(CMD_ALT_NIGHT, "\0", 1);
+    wait_sends(before_night + 8);
+    CHECK(fake_send_calls == before_night + 8, "overlapping requests produce a single kick");
+    alt_cluster_set_night(-1);
+
     /* A newer session replaces the old one; finalizing the old one keeps it. */
     AirPlayReceiverSessionPlatformInitialize(&session_b);
     AirPlayReceiverSessionPlatformFinalize(&session_a);
@@ -91,11 +147,14 @@ int main(void) {
     int before = fake_send_calls;
     zoom(1);
     deliver(CMD_ALT_UICTX, url, (uint32_t)strlen(url));
+    alt_cluster_set_night(0);
+    deliver(CMD_ALT_NIGHT, "\0", 1);
+    wait_sends(before + 1);
     CHECK(fake_send_calls == before, "no command after finalize");
 
     CHECK(fake_live_objects == 0, "every CF object released");
     alt_cluster_module_def.on_shutdown();
-    CHECK(handlers[CMD_ALT_ZOOM] == NULL && handlers[CMD_ALT_UICTX] == NULL, "handlers removed");
+    CHECK(handlers[CMD_ALT_ZOOM] == NULL && handlers[CMD_ALT_UICTX] == NULL && handlers[CMD_ALT_NIGHT] == NULL, "handlers removed");
 
     if (failures) { printf("alt_cluster_test: %d FAILED\n", failures); return 1; }
     printf("alt_cluster_test: session tracking, zoom/showUI dictionaries, burst cap, finalize gate, no leaks PASS\n");

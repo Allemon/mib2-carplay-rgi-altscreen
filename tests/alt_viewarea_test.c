@@ -21,6 +21,14 @@ void CFRelease(const void* cf);
 
 int hook_process_is_dio_manager(void) { return 1; }
 
+/* alt_cluster.c is not linked here: record what the observer reports. */
+static int night_state = -1, night_calls;
+void alt_cluster_set_night(int n) { night_state = n; night_calls++; }
+int alt_cluster_night(void) { return night_state; }
+extern int fake_night_value;
+const void* AirPlayReceiverServerPlatformCopyProperty(void* server, uint32_t flags, const void* prop,
+                                                      const void* qual, int32_t* err);
+
 static int failures;
 #define CHECK(c, m) do { if (!(c)) { printf("FAIL: %s\n", m); failures++; } } while (0)
 
@@ -92,6 +100,29 @@ int main(void) {
     CFRelease(d);
     CFRelease(k);
 
+    /* nightMode property: the head unit's day/night mode is recorded, the value passes through. */
+    k = CFStringCreateWithCString(NULL, "nightMode", 0x08000100u);
+    fake_night_value = 0;
+    d = AirPlayReceiverSessionPlatformCopyProperty(NULL, 0, k, NULL, &err);
+    CHECK(d != NULL && night_state == 0 && night_calls == 1, "day property recorded");
+    fake_night_value = 1;
+    d = AirPlayReceiverSessionPlatformCopyProperty(NULL, 0, k, NULL, &err);
+    CHECK(d != NULL && night_state == 1 && night_calls == 2, "night property recorded");
+    fake_night_value = 2;                       /* not a boolean: unknown, nothing recorded */
+    d = AirPlayReceiverSessionPlatformCopyProperty(NULL, 0, k, NULL, &err);
+    CHECK(d != NULL && night_state == 1 && night_calls == 2, "non-boolean nightMode ignored");
+    CFRelease(d);
+    /* The server-level property carries it too. */
+    fake_night_value = 0;
+    d = AirPlayReceiverServerPlatformCopyProperty(NULL, 0, k, NULL, &err);
+    CHECK(d != NULL && night_state == 0 && night_calls == 3, "server-level nightMode property recorded");
+    CFRelease(k);
+    k = CFStringCreateWithCString(NULL, "other", 0x08000100u);
+    d = AirPlayReceiverSessionPlatformCopyProperty(NULL, 0, k, NULL, &err);
+    CHECK(night_calls == 3, "other properties do not touch the night state");
+    CFRelease(d);
+    CFRelease(k);
+
     write_cfg(path, "view 0 0 1200 542\n");
     d = copy();
     areas(d, r);
@@ -110,6 +141,6 @@ int main(void) {
     remove(path);
     CHECK(fake_live == 0, "no CF objects leaked");
     if (failures) return 1;
-    printf("alt_viewarea_test: default kept, CopyDisplaysInfo + displays property rewritten, invalid refused PASS\n");
+    printf("alt_viewarea_test: default kept, CopyDisplaysInfo + displays property rewritten, invalid refused, nightMode observed PASS\n");
     return 0;
 }
