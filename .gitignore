@@ -169,3 +169,6 @@
 !/Toolbox/scripts/rgi_verbose_on.sh
 !/Toolbox/scripts/rgi_verbose_off.sh
 !/assets/gallery/*
+
+# Local checkout of the QNX toolchain (scripts/build_native.sh only needs its Docker image).
+/qnx65-armv7-toolchain/

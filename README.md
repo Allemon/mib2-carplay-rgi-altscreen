@@ -77,7 +77,7 @@ and `maneuver_render` come from upstream's V3.8 Fix1 release, each checked again
 | Binary | Toolchain |
 |---|---|
 | `libcarplay_altscreen.so` | Debian clang/LLD 19.1.7 in an image built from `docker/hook.Dockerfile` (automatic). Upstream's unmodified sources built with it give the release library byte for byte. |
-| `carplay-alt111-mirror-display` | QNX 6.5 SDP + GCC 8.5, image `qnx65-armv7-toolchain` from [luka-dev/qnx65-armv7-toolchain](https://github.com/luka-dev/qnx65-armv7-toolchain), built once |
+| `carplay-alt111-mirror-display` | QNX 6.5 SDP + GCC 8.5, image `qnx65-armv7-toolchain` from [luka-dev/qnx65-armv7-toolchain](https://github.com/luka-dev/qnx65-armv7-toolchain), built once. Upstream's sources built with it pass upstream's marker checks and link the same libraries, but are not byte-identical to the release: upstream used another GCC 8.5 build, ours links that image's libgcc helpers (+316 bytes of code). |
 
 ```sh
 git clone https://github.com/luka-dev/qnx65-armv7-toolchain

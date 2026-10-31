@@ -75,7 +75,7 @@ Java-варіант для MU1003, стоковий тачпад, пропуск
 | Бінарник | Тулчейн |
 |---|---|
 | `libcarplay_altscreen.so` | Debian clang/LLD 19.1.7 в образі з `docker/hook.Dockerfile` (автоматично). Незмінені джерела апстріму дають ним побайтно ту саму бібліотеку, що в релізі. |
-| `carplay-alt111-mirror-display` | QNX 6.5 SDP + GCC 8.5, образ `qnx65-armv7-toolchain` з [luka-dev/qnx65-armv7-toolchain](https://github.com/luka-dev/qnx65-armv7-toolchain), збирається один раз |
+| `carplay-alt111-mirror-display` | QNX 6.5 SDP + GCC 8.5, образ `qnx65-armv7-toolchain` з [luka-dev/qnx65-armv7-toolchain](https://github.com/luka-dev/qnx65-armv7-toolchain), збирається один раз. Джерела апстріму, зібрані ним, проходять перевірки маркерів апстріму й підключають ті самі бібліотеки, але побайтно не збігаються з релізом: апстрім використав іншу збірку GCC 8.5, наша підтягує допоміжні функції libgcc з цього образу (+316 байт коду). |
 
 ```sh
 git clone https://github.com/luka-dev/qnx65-armv7-toolchain
