@@ -1,6 +1,6 @@
 # MIB2 Toolbox — CarPlay AltScreen V3.8 Fix1
 
-**English** | [简体中文](README.md)
+**English** | [简体中文](README_CN.md)
 
 This project is designed for the Audi **MHI2Q** platform and displays the **native CarPlay AltScreen / secondary navigation view** directly on the vehicle's **Virtual Cockpit**. The core display path has been verified in a vehicle. Read this document in full before making changes to the head unit.
 
