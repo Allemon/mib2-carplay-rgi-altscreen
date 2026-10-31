@@ -83,5 +83,9 @@ script
    label   "Verbose Java logs: off"
 
 script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/repair_after_hybrid.sh"
+   label   "REPAIR CONFIG AFTER HYBRID (needs repair files on SD)"
+
+script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/stop_mmi_cockpit_carplay_test.sh"
    label   "RESTORE ORIGINAL"
