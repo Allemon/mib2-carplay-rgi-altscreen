@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Render the fork's startup clip: four rings drawn on black, one soft light sheen, hold.
+"""Render the fork's startup clip: four rings drawn on black while they settle from a slight
+zoom-in to their final size, one soft light sheen, hold.
 
 Writes the map display's embedded clip format directly (see
 Toolbox/carplay_alt_screen/mirror_display/tools/build_startup_logo.py and src/startup_logo.cpp):
@@ -27,6 +28,7 @@ STROKE = 8.5              # ring thickness
 PITCH = 74.0              # distance between ring centres (rings overlap like the badge)
 DRAW_START, DRAW_STAGGER, DRAW_TIME = 0.25, 0.15, 0.85
 SHEEN_START, SHEEN_TIME, SHEEN_WIDTH = 1.45, 0.75, 70.0
+ZOOM_FROM, ZOOM_TIME = 1.12, 2.4  # scale at t=0, eased down to 1.0 (no overshoot), then held
 
 # Brushed-silver vertical gradient (top light, bottom darker), linear RGB 0..1.
 TOP = np.array([0.93, 0.94, 0.95])
@@ -46,45 +48,46 @@ def ease_in_out(t):
 def render():
     xs = np.arange(WIDTH, dtype=np.float32)[None, :] + 0.5
     ys = np.arange(HEIGHT, dtype=np.float32)[:, None] + 0.5
-    centers = [WIDTH / 2.0 + (i - 1.5) * PITCH for i in range(4)]
-    left = int(centers[0] - RADIUS - STROKE) - 4
-    right = int(centers[-1] + RADIUS + STROKE) + 4
-    top = int(CENTER_Y - RADIUS - STROKE) - 4
-    bottom = int(CENTER_Y + RADIUS + STROKE) + 4
+    cx0 = WIDTH / 2.0
+    centers = [cx0 + (i - 1.5) * PITCH for i in range(4)]
+    # Bounding box at the largest scale; everything is drawn in logo space (scale 1).
+    half_w = (1.5 * PITCH + RADIUS + STROKE) * ZOOM_FROM + 4
+    half_h = (RADIUS + STROKE) * ZOOM_FROM + 4
+    left, right = int(cx0 - half_w), int(cx0 + half_w) + 1
+    top, bottom = int(CENTER_Y - half_h), int(CENTER_Y + half_h) + 1
     bx, by = xs[:, left:right], ys[top:bottom, :]
-
-    rings = []
-    for cx in centers:
-        dx, dy = bx - cx, by - CENTER_Y
-        dist = np.sqrt(dx * dx + dy * dy)
-        coverage = np.clip(STROKE / 2.0 + 0.5 - np.abs(dist - RADIUS), 0.0, 1.0)
-        # Arc position clockwise from 12 o'clock, in pixels along the centre line.
-        angle = np.mod(np.arctan2(dx, -dy), 2.0 * np.pi)
-        rings.append((coverage, angle * RADIUS))
     circumference = 2.0 * np.pi * RADIUS
-
-    shade = (by - (CENTER_Y - RADIUS - STROKE)) / (2.0 * (RADIUS + STROKE))
-    shade = np.clip(shade, 0.0, 1.0)[..., None]
-    base = TOP * (1.0 - shade) + BOTTOM * shade                      # (h, 1, 3)
 
     frames = []
     count = int(round(DURATION * FPS))
     for n in range(count):
         t = n / FPS
+        scale = 1.0 + (ZOOM_FROM - 1.0) * (1.0 - ease_out_cubic(t / ZOOM_TIME))
+        u = (bx - cx0) / scale + cx0                 # screen -> logo space
+        v = (by - CENTER_Y) / scale + CENTER_Y
         alpha = np.zeros((bottom - top, right - left), dtype=np.float32)
-        for i, (coverage, arc) in enumerate(rings):
+        for i, cx in enumerate(centers):
             p = ease_out_cubic((t - DRAW_START - i * DRAW_STAGGER) / DRAW_TIME)
             if p <= 0.0:
                 continue
-            drawn = np.clip((p * circumference - arc) / 1.5 + 0.5, 0.0, 1.0) if p < 1.0 else 1.0
-            alpha = np.maximum(alpha, coverage * drawn)
+            dx, dy = u - cx, v - CENTER_Y
+            dist = np.sqrt(dx * dx + dy * dy)
+            # Edge distance back in screen pixels keeps a one-pixel antialiased edge at any scale.
+            coverage = np.clip((STROKE / 2.0 - np.abs(dist - RADIUS)) * scale + 0.5, 0.0, 1.0)
+            if p < 1.0:
+                # Arc position clockwise from 12 o'clock, in pixels along the centre line.
+                arc = np.mod(np.arctan2(dx, -dy), 2.0 * np.pi) * RADIUS
+                coverage = coverage * np.clip((p * circumference - arc) * scale / 1.5 + 0.5, 0.0, 1.0)
+            alpha = np.maximum(alpha, coverage)
+        shade = np.clip((v - (CENTER_Y - RADIUS - STROKE)) / (2.0 * (RADIUS + STROKE)), 0.0, 1.0)
+        shade = np.broadcast_to(shade, alpha.shape)[..., None]
+        colour = TOP * (1.0 - shade) + BOTTOM * shade
         s = ease_in_out((t - SHEEN_START) / SHEEN_TIME)
-        sheen = 0.0
         if 0.0 < s < 1.0:
-            x0 = left - SHEEN_WIDTH + s * (right - left + 2 * SHEEN_WIDTH)
-            sheen = 0.55 * np.exp(-(((bx - x0) - (by - CENTER_Y) * 0.35) / SHEEN_WIDTH) ** 2 * 4.0)
-            sheen = sheen[..., None]
-        colour = np.clip(base + sheen, 0.0, 1.0)
+            lo, hi = centers[0] - RADIUS - STROKE, centers[-1] + RADIUS + STROKE
+            x0 = lo - SHEEN_WIDTH + s * (hi - lo + 2 * SHEEN_WIDTH)
+            sheen = 0.55 * np.exp(-(((u - x0) - (v - CENTER_Y) * 0.35) / SHEEN_WIDTH) ** 2 * 4.0)
+            colour = np.clip(colour + sheen[..., None], 0.0, 1.0)
         rgb = colour * alpha[..., None]
         frame = np.zeros((HEIGHT, WIDTH, 4), dtype=np.uint8)
         frame[..., 3] = 255
