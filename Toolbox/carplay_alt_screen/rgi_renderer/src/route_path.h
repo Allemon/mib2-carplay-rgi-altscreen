@@ -1,0 +1,117 @@
+/*
+ * Route path -- segment-based path definition + 3D mesh extrusion.
+ *
+ * Path = sequence of LINE and ARC segments in 2D (x, y).
+ * Densified to polyline, then extruded into a 3D mesh
+ * (top face + side walls + arrowhead prism).
+ *
+ * Coordinates are 2D maneuver space (same as mask rendering).
+ * Extrusion maps 2D y -> 3D z, adds 3D y for height.
+ *
+ * Copyright (c) 2026 LuKa (@LuKa_dev)
+ */
+
+#ifndef CR_ROUTE_PATH_H
+#define CR_ROUTE_PATH_H
+#include "route_progress.h"
+#include "contact_shadow.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Segment types */
+#define RSEG_LINE  0
+#define RSEG_ARC   1
+
+#define RPATH_MAX_SEGS  48
+#define RPATH_MAX_PTS  (CR_ROUTE_PROGRESS_POINTS - 1)
+#define RPATH_ANIMATION_EXTENSION 0.5f
+#define RPATH_ARROW_LENGTH_FACTOR 1.3f
+
+typedef struct {
+    int type;
+    float x0, y0, x1, y1;   /* LINE endpoints */
+    float cx, cy;            /* ARC center */
+    float radius;            /* ARC radius */
+    float start_rad;         /* ARC start angle (math convention) */
+    float end_rad;           /* ARC end angle */
+} route_seg_t;
+
+typedef struct {
+    route_seg_t segs[RPATH_MAX_SEGS];
+    int seg_count;
+    /* Densified polyline */
+    float px[RPATH_MAX_PTS], py[RPATH_MAX_PTS];
+    unsigned char pt_smooth[RPATH_MAX_PTS];  /* 1 for interior arc samples */
+    float dist[RPATH_MAX_PTS];  /* cumulative distance at each point */
+    int pt_count;
+    float total_length;
+    /* Tip style */
+    float arrow_x, arrow_y;
+    float arrow_angle;       /* radians */
+    float tip_blend;         /* 0.0 = arrow, 1.0 = bulb, intermediate = morph */
+    float bulb_radius;       /* target bulb radius when tip_blend > 0 */
+} route_path_t;
+
+#define RMESH_MAX_VERTS CR_CONTACT_MAX_SOURCE_VERTS
+
+typedef struct {
+    float verts[RMESH_MAX_VERTS * 6];  /* pos(3) + normal(3) */
+    float path_dist[RMESH_MAX_VERTS]; /* distance along the source path; no spatial lookup */
+    float progress_start, progress_end;
+    cr_route_progress_point_t progress_points[CR_ROUTE_PROGRESS_POINTS];
+    int progress_count;
+    int vert_count;
+    float contact_verts[CR_CONTACT_MAX_VERTS * 6];
+    int contact_count;
+    float contact_thickness;
+    int valid;
+} route_mesh_t;
+
+/* Path building */
+void rpath_clear(route_path_t *p);
+void rpath_add_line(route_path_t *p, float x0, float y0, float x1, float y1);
+void rpath_add_arc(route_path_t *p, float cx, float cy, float radius,
+                   float start_rad, float end_rad);
+void rpath_densify(route_path_t *p);
+void rpath_set_arrow(route_path_t *p, float x, float y, float angle_rad);
+
+/* Mesh generation + drawing.
+ * t0/t1 = animation window: extrude path from fraction t0 to t1.
+ * 0.0 = path start, 1.0 = path end. */
+void rpath_extrude(const route_path_t *p, route_mesh_t *m,
+                   float width, float base_y, float top_y,
+                   float t0, float t1);
+void rpath_extrude_partial(const route_path_t *p, route_mesh_t *m,
+                           float width, float base_y, float top_y,
+                           float t0, float t1,
+                           int cap_start, int cap_end, int tip_end);
+void rpath_draw(const route_mesh_t *m,
+                float r, float g, float b, float a);
+
+/* Append segments from src to dst, applying 2D rigid transform:
+ * rotated by (cos_r, sin_r) then translated by (tx, ty).
+ * rot_rad is the rotation angle for adjusting arc start/end. */
+void rpath_xform_append(route_path_t *dst, const route_path_t *src,
+                         float tx, float ty, float cos_r, float sin_r,
+                         float rot_rad);
+
+/* Height ramp restart: set the distance where the second maneuver starts
+ * on a combined path.  Each maneuver gets its own independent ramp.
+ * Pass -1 for standalone (single maneuver) paths. */
+void rpath_set_ramp_restart(float d);
+
+/* Per-maneuver elevation lift (world units added to base+top at head).
+ * Road thickness constant; whole cross-section rises. 0 = flat.
+ * On combined paths first/second can differ. Standalone: pass same for both. */
+void rpath_set_elevation(float first, float second);
+
+/* Debug overlay -- draws polyline with active window highlighted. */
+void rpath_draw_debug(const route_path_t *p, float t0, float t1);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* CR_ROUTE_PATH_H */

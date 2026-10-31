@@ -1,0 +1,883 @@
+/*
+ * Route path -- segment-based path + 3D mesh extrusion.
+ *
+ * Builds a polyline from LINE/ARC segments, then extrudes it as a
+ * single continuous stroked mesh with a top face, side walls, and
+ * an arrowhead prism.
+ *
+ * Interior arc samples resolve to shared left/right offset points so the
+ * top surface stays watertight across dense curves. Hard corners are
+ * finished with rounded sectors on both sides of the joint, so turns and
+ * roundabout entry/exit corners stay consistently rounded.
+ *
+ * 2D (x, y) -> 3D (x, height, z=y).
+ *
+ * Copyright (c) 2026 LuKa (@LuKa_dev)
+ */
+
+#include <stdio.h>
+#include <math.h>
+#include <string.h>
+#include "route_path.h"
+#include "render.h"
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+#define ARC_STEP_DEG 3.0f   /* densify arcs at ~3deg per point */
+#define JOIN_MIN_ANGLE 0.03f /* ~1.7deg -- skip join for tiny direction changes */
+#define MITER_LIMIT 3.0f    /* max miter length / half-width ratio */
+
+/* Height ramp:
+ * - Tail fade: first 0.35 units sink to ground (within pre-extension, invisible).
+ * - Entry to head: multiplicative ramp from 1x to 2x height.
+ *   Anchored to ROUTE_EXTEND (maneuver entry) so the ramp is identical on
+ *   standalone and combined paths — no visual jump at commit.
+ * - Pre-extension (0.35..0.50): flat at 1x nominal height. */
+#define HEIGHT_ENTRY_DIST  RPATH_ANIMATION_EXTENSION   /* maneuver entry = ROUTE_EXTEND from path start */
+#define HEIGHT_RAMP_DIST   1.5f    /* fixed distance over which ramp reaches max */
+/* Per-maneuver elevation lifts (world units added to base+top).
+ * On combined paths, first/second can differ. Standalone: use first. */
+static float g_ramp_lift_current = 0.0f;
+static float g_ramp_lift_next = 0.0f;
+
+void rpath_set_elevation(float first, float second) {
+    g_ramp_lift_current = first;
+    g_ramp_lift_next = second;
+}
+
+/* Ramp restart: distance on the combined path where the second maneuver
+ * begins.  Each maneuver gets its own independent ramp from its own entry.
+ * Set to -1 for standalone paths (single ramp). */
+static float g_ramp_restart = -1.0f;
+
+void rpath_set_ramp_restart(float d) {
+    g_ramp_restart = d;
+}
+
+/* ================================================================
+ * Path building
+ * ================================================================ */
+
+void rpath_clear(route_path_t *p) {
+    p->seg_count = 0;
+    p->pt_count = 0;
+    p->total_length = 0.0f;
+    p->arrow_x = 0.0f;
+    p->arrow_y = 0.0f;
+    p->arrow_angle = 0.0f;
+    p->tip_blend = 0.0f;
+    p->bulb_radius = 0.0f;
+}
+
+void rpath_add_line(route_path_t *p, float x0, float y0, float x1, float y1) {
+    if (p->seg_count >= RPATH_MAX_SEGS) return;
+    route_seg_t *s = &p->segs[p->seg_count++];
+    s->type = RSEG_LINE;
+    s->x0 = x0; s->y0 = y0;
+    s->x1 = x1; s->y1 = y1;
+}
+
+void rpath_add_arc(route_path_t *p, float cx, float cy, float radius,
+                   float start_rad, float end_rad) {
+    if (p->seg_count >= RPATH_MAX_SEGS) return;
+    route_seg_t *s = &p->segs[p->seg_count++];
+    s->type = RSEG_ARC;
+    s->cx = cx; s->cy = cy;
+    s->radius = radius;
+    s->start_rad = start_rad;
+    s->end_rad = end_rad;
+}
+
+void rpath_set_arrow(route_path_t *p, float x, float y, float angle_rad) {
+    p->arrow_x = x;
+    p->arrow_y = y;
+    p->arrow_angle = angle_rad;
+}
+
+static void add_pt(route_path_t *p, float x, float y, int smooth) {
+    if (p->pt_count >= RPATH_MAX_PTS) return;
+    /* Skip duplicate points */
+    if (p->pt_count > 0) {
+        float dx = x - p->px[p->pt_count - 1];
+        float dy = y - p->py[p->pt_count - 1];
+        if (dx * dx + dy * dy < 1e-8f) {
+            if (smooth) p->pt_smooth[p->pt_count - 1] = 1;
+            return;
+        }
+    }
+    p->px[p->pt_count] = x;
+    p->py[p->pt_count] = y;
+    p->pt_smooth[p->pt_count] = (unsigned char)(smooth ? 1 : 0);
+    p->pt_count++;
+}
+
+void rpath_densify(route_path_t *p) {
+    p->pt_count = 0;
+    p->total_length = 0.0f;
+    int i;
+
+    for (i = 0; i < p->seg_count; i++) {
+        route_seg_t *s = &p->segs[i];
+        if (s->type == RSEG_LINE) {
+            add_pt(p, s->x0, s->y0, 0);
+            add_pt(p, s->x1, s->y1, 0);
+        } else {
+            /* Arc -- emit points at ARC_STEP_DEG intervals */
+            float sweep = s->end_rad - s->start_rad;
+            float abs_sweep = fabsf(sweep);
+            float step_rad = ARC_STEP_DEG * (float)M_PI / 180.0f;
+            int steps = (int)(abs_sweep / step_rad) + 1;
+            if (steps < 2) steps = 2;
+            int j;
+            for (j = 0; j <= steps; j++) {
+                float t = (float)j / (float)steps;
+                float angle = s->start_rad + sweep * t;
+                float x = s->cx + s->radius * cosf(angle);
+                float y = s->cy + s->radius * sinf(angle);
+                add_pt(p, x, y, (j > 0 && j < steps));
+            }
+        }
+    }
+
+    /* Compute cumulative distance */
+    p->dist[0] = 0.0f;
+    for (i = 1; i < p->pt_count; i++) {
+        float dx = p->px[i] - p->px[i - 1];
+        float dy = p->py[i] - p->py[i - 1];
+        p->dist[i] = p->dist[i - 1] + sqrtf(dx * dx + dy * dy);
+    }
+    if (p->pt_count > 0)
+        p->total_length = p->dist[p->pt_count - 1];
+}
+
+/* ================================================================
+ * Mesh extrusion -- stroked strip with rounded hard corners
+ *
+ * For each polyline segment: top face quad + 2 side wall quads.
+ * Smooth arc samples resolve to shared offsets so dense curves stay
+ * watertight. Hard corners switch to segment-local offsets and rounded
+ * sector fills on both sides of the joint.
+ * Then arrowhead prism at the end.
+ * ================================================================ */
+
+static int g_mesh_overflow_warned = 0;
+static float g_mesh_path_dist = 0; /* extrusion-local tag for caps/joins */
+
+static void mesh_v(route_mesh_t *m, float x, float y, float z,
+                   float nx, float ny, float nz) {
+    if (m->vert_count >= RMESH_MAX_VERTS) {
+        if (!g_mesh_overflow_warned) {
+            fprintf(stderr, "route_path: mesh vertex overflow (max %d)\n", RMESH_MAX_VERTS);
+            g_mesh_overflow_warned = 1;
+        }
+        return;
+    }
+    int idx = m->vert_count * 6;
+    m->verts[idx]   = x;  m->verts[idx+1] = y;  m->verts[idx+2] = z;
+    m->verts[idx+3] = nx; m->verts[idx+4] = ny; m->verts[idx+5] = nz;
+    m->path_dist[m->vert_count] = g_mesh_path_dist;
+    m->vert_count++;
+}
+
+static void mesh_path_v(route_mesh_t *m, float x, float y, float z,
+                        float nx, float ny, float nz, float distance) {
+    g_mesh_path_dist=distance;
+    mesh_v(m,x,y,z,nx,ny,nz);
+}
+
+/* Push a quad (2 triangles) with flat normal */
+static void mesh_quad(route_mesh_t *m,
+                      float x0, float y0, float z0,
+                      float x1, float y1, float z1,
+                      float x2, float y2, float z2,
+                      float x3, float y3, float z3,
+                      float nx, float ny, float nz) {
+    mesh_v(m, x0,y0,z0, nx,ny,nz);
+    mesh_v(m, x1,y1,z1, nx,ny,nz);
+    mesh_v(m, x2,y2,z2, nx,ny,nz);
+    mesh_v(m, x0,y0,z0, nx,ny,nz);
+    mesh_v(m, x2,y2,z2, nx,ny,nz);
+    mesh_v(m, x3,y3,z3, nx,ny,nz);
+}
+
+static void emit_round_join(route_mesh_t *m,
+                            float anchor_x, float anchor_z,
+                            float corner_x, float corner_z,
+                            float base_y, float top_y,
+                            float pa_x, float pa_z,
+                            float pb_x, float pb_z,
+                            float hw) {
+    float ang_a = atan2f(pa_z, pa_x);
+    float ang_b = atan2f(pb_z, pb_x);
+    float diff = ang_b - ang_a;
+
+    if (diff > (float)M_PI)  diff -= 2.0f * (float)M_PI;
+    if (diff < -(float)M_PI) diff += 2.0f * (float)M_PI;
+
+    int fan_segs = 8;
+    float abs_diff = fabsf(diff);
+    if (abs_diff < 0.3f) fan_segs = 3;
+    else if (abs_diff < 1.0f) fan_segs = 5;
+
+    float first_ox = corner_x + hw * cosf(ang_a);
+    float first_oz = corner_z + hw * sinf(ang_a);
+    float last_ox  = corner_x + hw * cosf(ang_a + diff);
+    float last_oz  = corner_z + hw * sinf(ang_a + diff);
+
+    int j;
+    for (j = 0; j < fan_segs; j++) {
+        float t0 = (float)j / (float)fan_segs;
+        float t1 = (float)(j + 1) / (float)fan_segs;
+        float a0 = ang_a + diff * t0;
+        float a1 = ang_a + diff * t1;
+        float ox0 = corner_x + hw * cosf(a0), oz0 = corner_z + hw * sinf(a0);
+        float ox1 = corner_x + hw * cosf(a1), oz1 = corner_z + hw * sinf(a1);
+
+        /* Top fill for the rounded join wedge. */
+        mesh_v(m, anchor_x, top_y, anchor_z, 0, 1, 0);
+        mesh_v(m, ox0,     top_y, oz0,      0, 1, 0);
+        mesh_v(m, ox1,     top_y, oz1,      0, 1, 0);
+
+        /* Outer side wall following the rounded edge. */
+        {
+            float wn_x = cosf((a0 + a1) * 0.5f);
+            float wn_z = sinf((a0 + a1) * 0.5f);
+            mesh_quad(m,
+                      ox0, base_y, oz0,
+                      ox1, base_y, oz1,
+                      ox1, top_y,  oz1,
+                      ox0, top_y,  oz0,
+                      wn_x, 0, wn_z);
+        }
+    }
+
+    /* Spoke walls -- close the straight edges of the fan (anchor -> first/last arc point).
+     * Without these, sharp corners (>90deg) show a visible gap in the side wall.
+     * Normal is chosen perpendicular to spoke, pointing AWAY from fan interior
+     * (determined by dotting candidate normal with the fan midpoint direction). */
+    {
+        float mid_ang = ang_a + diff * 0.5f;
+        float fan_dx = cosf(mid_ang), fan_dz = sinf(mid_ang);
+        float dx, dz, len, na_x, na_z, wn_x, wn_z;
+
+        /* First spoke: anchor -> first outer point */
+        dx = first_ox - anchor_x; dz = first_oz - anchor_z;
+        len = sqrtf(dx * dx + dz * dz);
+        if (len > 1e-6f) {
+            na_x = -dz / len; na_z = dx / len;
+            if (na_x * fan_dx + na_z * fan_dz > 0.0f) { na_x = -na_x; na_z = -na_z; }
+            wn_x = na_x; wn_z = na_z;
+            mesh_quad(m,
+                      anchor_x,  base_y, anchor_z,
+                      first_ox,  base_y, first_oz,
+                      first_ox,  top_y,  first_oz,
+                      anchor_x,  top_y,  anchor_z,
+                      wn_x, 0, wn_z);
+        }
+
+        /* Last spoke: last outer point -> anchor */
+        dx = anchor_x - last_ox; dz = anchor_z - last_oz;
+        len = sqrtf(dx * dx + dz * dz);
+        if (len > 1e-6f) {
+            na_x = -dz / len; na_z = dx / len;
+            if (na_x * fan_dx + na_z * fan_dz > 0.0f) { na_x = -na_x; na_z = -na_z; }
+            wn_x = na_x; wn_z = na_z;
+            mesh_quad(m,
+                      last_ox,   base_y, last_oz,
+                      anchor_x,  base_y, anchor_z,
+                      anchor_x,  top_y,  anchor_z,
+                      last_ox,   top_y,  last_oz,
+                      wn_x, 0, wn_z);
+        }
+    }
+}
+
+void rpath_extrude_partial(const route_path_t *p, route_mesh_t *m,
+                           float width, float base_y, float top_y,
+                           float t0, float t1,
+                           int cap_start, int cap_end, int tip_end) {
+    m->vert_count = 0;
+    m->contact_count = 0;
+    m->contact_thickness = top_y-base_y;
+    m->valid = 0;
+    g_mesh_path_dist=0;
+    m->progress_count=0;
+    m->progress_start=HEIGHT_ENTRY_DIST;
+    m->progress_end=p->total_length-HEIGHT_ENTRY_DIST+width*RPATH_ARROW_LENGTH_FACTOR;
+    if (p->pt_count < 2) return;
+    if (t0 < 0.0f) t0 = 0.0f;
+    if (t1 > 1.0f) t1 = 1.0f;
+    if (t0 >= t1) return;
+    if (t1 <= 0.0f) return;
+
+    float hw = width * 0.5f;
+
+    /* Determine effective start point from t0 parameter */
+    float start_dist = t0 * p->total_length;
+    int s_idx = 0;  /* first original point index to include after interpolated start */
+    float start_x = p->px[0], start_y = p->py[0];
+    if (t0 > 0.0f) {
+        int i;
+        for (i = 1; i < p->pt_count; i++) {
+            if (p->dist[i] >= start_dist) {
+                float seg_len = p->dist[i] - p->dist[i - 1];
+                float frac = (seg_len > 1e-6f) ?
+                    (start_dist - p->dist[i - 1]) / seg_len : 0.0f;
+                start_x = p->px[i - 1] + frac * (p->px[i] - p->px[i - 1]);
+                start_y = p->py[i - 1] + frac * (p->py[i] - p->py[i - 1]);
+                s_idx = i;
+                break;
+            }
+        }
+    }
+
+    /* Determine effective endpoint from t1 parameter */
+    float target_dist = t1 * p->total_length;
+    int e_idx = p->pt_count - 1;
+    float end_x = p->px[e_idx], end_y = p->py[e_idx];
+    if (t1 < 1.0f) {
+        int i;
+        for (i = 1; i < p->pt_count; i++) {
+            if (p->dist[i] >= target_dist) {
+                float seg_len = p->dist[i] - p->dist[i - 1];
+                float frac = (seg_len > 1e-6f) ?
+                    (target_dist - p->dist[i - 1]) / seg_len : 0.0f;
+                end_x = p->px[i - 1] + frac * (p->px[i] - p->px[i - 1]);
+                end_y = p->py[i - 1] + frac * (p->py[i] - p->py[i - 1]);
+                e_idx = i;
+                break;
+            }
+        }
+    }
+
+    /* Build local point array from [t0..t1] window */
+    int n_pts = 0;
+    float epx[RPATH_MAX_PTS], epy[RPATH_MAX_PTS];
+    unsigned char esmooth[RPATH_MAX_PTS];
+
+    /* Interpolated start */
+    epx[0] = start_x; epy[0] = start_y; esmooth[0] = 0;
+    n_pts = 1;
+
+    /* Original interior points between s_idx and the end boundary */
+    {
+        int last_orig = (t1 >= 1.0f) ? (p->pt_count - 1) : (e_idx - 1);
+        int i;
+        for (i = s_idx; i <= last_orig; i++) {
+            float dx = p->px[i] - epx[n_pts - 1];
+            float dy = p->py[i] - epy[n_pts - 1];
+            if (dx * dx + dy * dy < 1e-8f) continue;
+            if (n_pts >= RPATH_MAX_PTS) break;
+            epx[n_pts] = p->px[i];
+            epy[n_pts] = p->py[i];
+            esmooth[n_pts] = p->pt_smooth[i];
+            n_pts++;
+        }
+    }
+
+    /* Interpolated end (only when t1 < 1.0) */
+    if (t1 < 1.0f) {
+        float dx = end_x - epx[n_pts - 1];
+        float dy = end_y - epy[n_pts - 1];
+        if (dx * dx + dy * dy >= 1e-8f && n_pts < RPATH_MAX_PTS) {
+            epx[n_pts] = end_x;
+            epy[n_pts] = end_y;
+            esmooth[n_pts] = 0;
+            n_pts++;
+        }
+    }
+
+    if (n_pts < 2) return;
+
+    /* Per-vertex height ramp: progressive elevation from entry to head. */
+    float e_dist[RPATH_MAX_PTS];   /* cumulative distance within window */
+    float e_base[RPATH_MAX_PTS];   /* per-vertex base_y */
+    float e_top[RPATH_MAX_PTS];    /* per-vertex top_y */
+    {
+        int j;
+        e_dist[0] = 0.0f;
+        for (j = 1; j < n_pts; j++) {
+            float dx = epx[j] - epx[j-1], dy = epy[j] - epy[j-1];
+            e_dist[j] = e_dist[j-1] + sqrtf(dx*dx + dy*dy);
+        }
+        for (j = 0; j < n_pts; j++) {
+            float lift;
+            float d = start_dist + e_dist[j];
+
+            if (g_ramp_restart > 0.0f && d >= g_ramp_restart) {
+                /* Second maneuver: ramp from its own entry */
+                float local_entry = g_ramp_restart + HEIGHT_ENTRY_DIST;
+                if (d < local_entry) {
+                    lift = 0.0f;
+                } else {
+                    float ramp_f = (d - local_entry) / HEIGHT_RAMP_DIST;
+                    if (ramp_f > 1.0f) ramp_f = 1.0f;
+                    lift = ramp_f * g_ramp_lift_next;
+                }
+            } else if (g_ramp_restart > 0.0f
+                       && d > g_ramp_restart - HEIGHT_ENTRY_DIST) {
+                /* Blend zone: smoothly drop from first ramp to zero.
+                 * Covers the post-extension of current maneuver. */
+                float first_lift;
+                float rf = (d - HEIGHT_ENTRY_DIST) / HEIGHT_RAMP_DIST;
+                if (rf > 1.0f) rf = 1.0f;
+                if (rf < 0.0f) rf = 0.0f;
+                first_lift = rf * g_ramp_lift_current;
+
+                float blend_start = g_ramp_restart - HEIGHT_ENTRY_DIST;
+                float blend_len = HEIGHT_ENTRY_DIST;
+                float bt = (d - blend_start) / blend_len;
+                if (bt < 0.0f) bt = 0.0f;
+                if (bt > 1.0f) bt = 1.0f;
+                bt = bt * bt * (3.0f - 2.0f * bt);  /* smoothstep */
+                lift = first_lift * (1.0f - bt);
+            } else {
+                /* First maneuver: ramp from entry */
+                if (d < HEIGHT_ENTRY_DIST) {
+                    lift = 0.0f;
+                } else {
+                    float ramp_f = (d - HEIGHT_ENTRY_DIST) / HEIGHT_RAMP_DIST;
+                    if (ramp_f > 1.0f) ramp_f = 1.0f;
+                    lift = ramp_f * g_ramp_lift_current;
+                }
+            }
+            e_base[j] = base_y + lift;
+            e_top[j]  = top_y  + lift;
+        }
+    }
+
+    {
+        int j;
+        m->progress_count=n_pts;
+        for(j=0;j<n_pts;j++) {
+            cr_route_progress_point_t *point=&m->progress_points[j];
+            point->d=start_dist+e_dist[j];
+            point->x=epx[j]; point->y=e_top[j]; point->z=epy[j];
+        }
+    }
+
+    /* Pre-compute per-segment direction and perpendicular */
+    int i;
+    float dir_x[RPATH_MAX_PTS], dir_y[RPATH_MAX_PTS];   /* unit direction */
+    float perp_x[RPATH_MAX_PTS], perp_y[RPATH_MAX_PTS]; /* left perpendicular * hw */
+    float corner_cross[RPATH_MAX_PTS];
+    unsigned char hard_corner[RPATH_MAX_PTS];
+
+    for (i = 0; i < n_pts - 1; i++) {
+        float dx = epx[i+1] - epx[i], dy = epy[i+1] - epy[i];
+        float len = sqrtf(dx*dx + dy*dy);
+        if (len < 1e-6f) { dir_x[i] = 1; dir_y[i] = 0; }
+        else { dir_x[i] = dx/len; dir_y[i] = dy/len; }
+        /* Left perpendicular (rotate direction 90deg CCW) */
+        perp_x[i] = -dir_y[i] * hw;
+        perp_y[i] =  dir_x[i] * hw;
+    }
+    for (i = 0; i < n_pts; i++) {
+        corner_cross[i] = 0.0f;
+        hard_corner[i] = 0;
+    }
+
+    /* Pre-compute offset points at each vertex: left (lx,ly) and right (rx,ry).
+     * First/last use the adjacent segment's perpendicular.
+     * Smooth interior vertices use a shared miter point on both sides. Hard
+     * corners still compute these, but the segment quads switch to segment-local
+     * offsets and the rounded sectors below fill the joint. */
+    float lx[RPATH_MAX_PTS], ly[RPATH_MAX_PTS];
+    float rx[RPATH_MAX_PTS], ry[RPATH_MAX_PTS];
+
+    /* First vertex -- use segment 0's perpendicular */
+    lx[0] = epx[0] + perp_x[0]; ly[0] = epy[0] + perp_y[0];
+    rx[0] = epx[0] - perp_x[0]; ry[0] = epy[0] - perp_y[0];
+
+    /* Last vertex -- use last segment's perpendicular */
+    {
+        int last_seg = n_pts - 2;
+        lx[n_pts-1] = epx[n_pts-1] + perp_x[last_seg];
+        ly[n_pts-1] = epy[n_pts-1] + perp_y[last_seg];
+        rx[n_pts-1] = epx[n_pts-1] - perp_x[last_seg];
+        ry[n_pts-1] = epy[n_pts-1] - perp_y[last_seg];
+    }
+
+    /* Interior vertices: compute shared left/right stroke offsets. */
+    for (i = 1; i < n_pts - 1; i++) {
+        int seg_prev = i - 1, seg_next = i;
+        float cross = dir_x[seg_prev] * dir_y[seg_next] - dir_y[seg_prev] * dir_x[seg_next];
+        float mx = perp_x[seg_prev] + perp_x[seg_next];
+        float my = perp_y[seg_prev] + perp_y[seg_next];
+        float ml = sqrtf(mx*mx + my*my);
+
+        corner_cross[i] = cross;
+        hard_corner[i] = (unsigned char)((!esmooth[i] && fabsf(cross) >= JOIN_MIN_ANGLE) ? 1 : 0);
+
+        if (ml < 1e-6f || fabsf(cross) < JOIN_MIN_ANGLE) {
+            /* Nearly straight -- use the previous segment's perpendicular. */
+            lx[i] = epx[i] + perp_x[seg_prev]; ly[i] = epy[i] + perp_y[seg_prev];
+            rx[i] = epx[i] - perp_x[seg_prev]; ry[i] = epy[i] - perp_y[seg_prev];
+        } else {
+            mx /= ml; my /= ml;
+            float pu_x = perp_x[seg_prev] / hw, pu_y = perp_y[seg_prev] / hw;
+            float dot = mx * pu_x + my * pu_y;
+            if (dot < 0.01f) dot = 0.01f;  /* avoid division by near-zero */
+            float miter_len = hw / dot;
+            if (miter_len > hw * MITER_LIMIT) miter_len = hw * MITER_LIMIT;
+            if (hard_corner[i]) {
+                if (cross > 0.0f) {
+                    /* Left turn: left side is inner, right side stays segment-local. */
+                    lx[i] = epx[i] + mx * miter_len; ly[i] = epy[i] + my * miter_len;
+                    rx[i] = epx[i] - perp_x[seg_prev]; ry[i] = epy[i] - perp_y[seg_prev];
+                } else {
+                    /* Right turn: right side is inner, left side stays segment-local. */
+                    lx[i] = epx[i] + perp_x[seg_prev]; ly[i] = epy[i] + perp_y[seg_prev];
+                    rx[i] = epx[i] - mx * miter_len; ry[i] = epy[i] - my * miter_len;
+                }
+            } else {
+                lx[i] = epx[i] + mx * miter_len; ly[i] = epy[i] + my * miter_len;
+                rx[i] = epx[i] - mx * miter_len; ry[i] = epy[i] - my * miter_len;
+            }
+        }
+    }
+
+    /* ---- Generate mesh ---- */
+
+    /* Segment quads (each segment uses shared offsets at both endpoints).
+     * Hard corners: inner side uses miter, outer side uses this segment's perp.
+     * The round join fan fills the outer gap between adjacent segments. */
+    for (i = 0; i < n_pts - 1; i++) {
+        float l0x, l0y, r0x, r0y;
+        float l1x, l1y, r1x, r1y;
+
+        if (i == 0 || !hard_corner[i]) {
+            l0x = lx[i]; l0y = ly[i];
+            r0x = rx[i]; r0y = ry[i];
+        } else if (corner_cross[i] > 0.0f) {
+            /* Left turn at i: left=inner(miter), right=outer(this seg perp) */
+            l0x = lx[i]; l0y = ly[i];
+            r0x = epx[i] - perp_x[i]; r0y = epy[i] - perp_y[i];
+        } else {
+            /* Right turn at i: right=inner(miter), left=outer(this seg perp) */
+            l0x = epx[i] + perp_x[i]; l0y = epy[i] + perp_y[i];
+            r0x = rx[i]; r0y = ry[i];
+        }
+
+        if (i == n_pts - 2 || !hard_corner[i + 1]) {
+            l1x = lx[i + 1]; l1y = ly[i + 1];
+            r1x = rx[i + 1]; r1y = ry[i + 1];
+        } else if (corner_cross[i + 1] > 0.0f) {
+            l1x = lx[i + 1]; l1y = ly[i + 1];
+            r1x = epx[i + 1] - perp_x[i]; r1y = epy[i + 1] - perp_y[i];
+        } else {
+            l1x = epx[i + 1] + perp_x[i]; l1y = epy[i + 1] + perp_y[i];
+            r1x = rx[i + 1]; r1y = ry[i + 1];
+        }
+
+        /* Map 2D y -> 3D z */
+        float z_l0 = l0y, z_l1 = l1y, z_r0 = r0y, z_r1 = r1y;
+
+        /* Per-vertex heights */
+        float by0 = e_base[i],   ty0 = e_top[i];
+        float by1 = e_base[i+1], ty1 = e_top[i+1];
+
+        /* Side normal from this segment's perpendicular */
+        float snx = perp_x[i] / hw, snz = perp_y[i] / hw;
+
+        /* Top face */
+        mesh_path_v(m, l0x, ty0, z_l0, 0,1,0, start_dist+e_dist[i]);
+        mesh_path_v(m, r0x, ty0, z_r0, 0,1,0, start_dist+e_dist[i]);
+        mesh_path_v(m, r1x, ty1, z_r1, 0,1,0, start_dist+e_dist[i+1]);
+        mesh_path_v(m, l0x, ty0, z_l0, 0,1,0, start_dist+e_dist[i]);
+        mesh_path_v(m, r1x, ty1, z_r1, 0,1,0, start_dist+e_dist[i+1]);
+        mesh_path_v(m, l1x, ty1, z_l1, 0,1,0, start_dist+e_dist[i+1]);
+
+        /* Left wall */
+        mesh_path_v(m, l0x, by0, z_l0, snx,0,snz, start_dist+e_dist[i]);
+        mesh_path_v(m, l1x, by1, z_l1, snx,0,snz, start_dist+e_dist[i+1]);
+        mesh_path_v(m, l1x, ty1, z_l1, snx,0,snz, start_dist+e_dist[i+1]);
+        mesh_path_v(m, l0x, by0, z_l0, snx,0,snz, start_dist+e_dist[i]);
+        mesh_path_v(m, l1x, ty1, z_l1, snx,0,snz, start_dist+e_dist[i+1]);
+        mesh_path_v(m, l0x, ty0, z_l0, snx,0,snz, start_dist+e_dist[i]);
+
+        /* Right wall */
+        mesh_path_v(m, r0x, ty0, z_r0, -snx,0,-snz, start_dist+e_dist[i]);
+        mesh_path_v(m, r1x, ty1, z_r1, -snx,0,-snz, start_dist+e_dist[i+1]);
+        mesh_path_v(m, r1x, by1, z_r1, -snx,0,-snz, start_dist+e_dist[i+1]);
+        mesh_path_v(m, r0x, ty0, z_r0, -snx,0,-snz, start_dist+e_dist[i]);
+        mesh_path_v(m, r1x, by1, z_r1, -snx,0,-snz, start_dist+e_dist[i+1]);
+        mesh_path_v(m, r0x, by0, z_r0, -snx,0,-snz, start_dist+e_dist[i]);
+    }
+
+    /* Rounded outer join for hard corners only.
+     * The inner side uses a miter point; the outer side gets a fan. */
+    for (i = 1; i < n_pts - 1; i++) {
+        int seg_prev = i - 1, seg_next = i;
+        if (!hard_corner[i]) continue;
+        g_mesh_path_dist=start_dist+e_dist[i];
+
+        if (corner_cross[i] > 0.0f) {
+            emit_round_join(m,
+                            lx[i], ly[i],
+                            epx[i], epy[i],
+                            e_base[i], e_top[i],
+                            -perp_x[seg_prev], -perp_y[seg_prev],
+                            -perp_x[seg_next], -perp_y[seg_next],
+                            hw);
+        } else {
+            emit_round_join(m,
+                            rx[i], ry[i],
+                            epx[i], epy[i],
+                            e_base[i], e_top[i],
+                            perp_x[seg_prev], perp_y[seg_prev],
+                            perp_x[seg_next], perp_y[seg_next],
+                            hw);
+        }
+    }
+
+    /* Front cap (at path start — tail) */
+    if (cap_start) {
+        g_mesh_path_dist=start_dist;
+        float fnx = -dir_x[0], fnz = -dir_y[0];
+        mesh_quad(m,
+                  lx[0], e_base[0], ly[0],
+                  rx[0], e_base[0], ry[0],
+                  rx[0], e_top[0],  ry[0],
+                  lx[0], e_top[0],  ly[0],
+                  fnx, 0, fnz);
+    }
+
+    /* Back cap (at path end — head) */
+    if (cap_end) {
+        g_mesh_path_dist=target_dist;
+        int li = n_pts - 1;
+        float fnx = dir_x[n_pts - 2], fnz = dir_y[n_pts - 2];
+        mesh_quad(m,
+                  rx[li], e_base[li], ry[li],
+                  lx[li], e_base[li], ly[li],
+                  lx[li], e_top[li],  ly[li],
+                  rx[li], e_top[li],  ry[li],
+                  fnx, 0, fnz);
+    }
+
+    /* Tip: blend between arrow prism (blend=0) and bulb disc (blend=1).
+     * Uses head-vertex height for full elevation at the tip. */
+    if (tip_end) {
+        g_mesh_path_dist=target_dist;
+        float blend = p->tip_blend;
+        if (blend < 0.0f) blend = 0.0f;
+        if (blend > 1.0f) blend = 1.0f;
+
+        int li = n_pts - 1;
+        float tip_base = e_base[li];
+        float tip_top  = e_top[li];
+
+        float ax, az, a_dir;
+        if (t1 >= 1.0f) {
+            ax = epx[li];
+            az = epy[li];
+            a_dir = atan2f(dir_y[n_pts - 2], dir_x[n_pts - 2]);
+        } else {
+            ax = end_x;
+            az = end_y;
+            a_dir = atan2f(dir_y[n_pts - 2], dir_x[n_pts - 2]);
+        }
+
+        /* Continue the metric through the head. Keep the same distance tags
+         * as the arrow vertices/bulb so arrival reaches the complete tip. */
+        if(m->progress_count<CR_ROUTE_PROGRESS_POINTS) {
+            float length=width*RPATH_ARROW_LENGTH_FACTOR;
+            cr_route_progress_point_t *point=&m->progress_points[m->progress_count++];
+            point->d=target_dist+length;
+            point->x=ax+length*cosf(a_dir); point->y=tip_top;
+            point->z=az+length*sinf(a_dir);
+        }
+
+        /* Arrow prism (scales down with blend) */
+        if (blend < 1.0f) {
+            int arrow_first = m->vert_count;
+            float s = 1.0f - blend;
+            float arrow_size = width * RPATH_ARROW_LENGTH_FACTOR * s;
+            float tip_x = ax + arrow_size * cosf(a_dir);
+            float tip_z = az + arrow_size * sinf(a_dir);
+            float perp_ax = -sinf(a_dir) * hw * 1.536f * s;
+            float perp_az =  cosf(a_dir) * hw * 1.536f * s;
+            float bl_x = ax + perp_ax, bl_z = az + perp_az;
+            float br_x = ax - perp_ax, br_z = az - perp_az;
+
+            mesh_v(m, bl_x,  tip_top, bl_z,  0, 1, 0);
+            mesh_v(m, br_x,  tip_top, br_z,  0, 1, 0);
+            mesh_v(m, tip_x, tip_top, tip_z, 0, 1, 0);
+
+            float ln_x = tip_z - bl_z, ln_z = -(tip_x - bl_x);
+            float ln_len = sqrtf(ln_x * ln_x + ln_z * ln_z);
+            if (ln_len > 1e-6f) { ln_x /= ln_len; ln_z /= ln_len; }
+            mesh_v(m, bl_x,  tip_base, bl_z,  ln_x, 0, ln_z);
+            mesh_v(m, tip_x, tip_base, tip_z, ln_x, 0, ln_z);
+            mesh_v(m, tip_x, tip_top,  tip_z, ln_x, 0, ln_z);
+            mesh_v(m, bl_x,  tip_base, bl_z,  ln_x, 0, ln_z);
+            mesh_v(m, tip_x, tip_top,  tip_z, ln_x, 0, ln_z);
+            mesh_v(m, bl_x,  tip_top,  bl_z,  ln_x, 0, ln_z);
+
+            float rn_x = -(tip_z - br_z), rn_z = (tip_x - br_x);
+            float rn_len = sqrtf(rn_x * rn_x + rn_z * rn_z);
+            if (rn_len > 1e-6f) { rn_x /= rn_len; rn_z /= rn_len; }
+            mesh_v(m, br_x,  tip_base, br_z,  rn_x, 0, rn_z);
+            mesh_v(m, br_x,  tip_top,  br_z,  rn_x, 0, rn_z);
+            mesh_v(m, tip_x, tip_top,  tip_z, rn_x, 0, rn_z);
+            mesh_v(m, br_x,  tip_base, br_z,  rn_x, 0, rn_z);
+            mesh_v(m, tip_x, tip_top,  tip_z, rn_x, 0, rn_z);
+            mesh_v(m, tip_x, tip_base, tip_z, rn_x, 0, rn_z);
+
+            float bn_x = -cosf(a_dir), bn_z = -sinf(a_dir);
+            mesh_quad(m, bl_x, tip_base, bl_z, bl_x, tip_top, bl_z,
+                      br_x, tip_top, br_z, br_x, tip_base, br_z, bn_x, 0, bn_z);
+
+            mesh_v(m, bl_x,  tip_base, bl_z,  0, -1, 0);
+            mesh_v(m, tip_x, tip_base, tip_z, 0, -1, 0);
+            mesh_v(m, br_x,  tip_base, br_z,  0, -1, 0);
+            {
+                int vi;
+                for(vi=arrow_first;vi<m->vert_count;vi++) {
+                    float d=(m->verts[vi*6]-ax)*cosf(a_dir)+(m->verts[vi*6+2]-az)*sinf(a_dir);
+                    m->path_dist[vi]=target_dist+d;
+                }
+            }
+        }
+
+        /* Bulb disc (scales up with blend) */
+        if (blend > 0.0f) {
+            g_mesh_path_dist=m->progress_end;
+            float bul_r = p->bulb_radius * blend;
+            int segs = 16, i_b;
+            for (i_b = 0; i_b < segs; i_b++) {
+                float a0 = (float)i_b / segs * 2.0f * (float)M_PI;
+                float a1 = (float)(i_b + 1) / segs * 2.0f * (float)M_PI;
+                float c0 = cosf(a0), s0 = sinf(a0);
+                float c1 = cosf(a1), s1 = sinf(a1);
+                /* Top face */
+                mesh_v(m, ax, tip_top, az, 0, 1, 0);
+                mesh_v(m, ax + bul_r * c0, tip_top, az + bul_r * s0, 0, 1, 0);
+                mesh_v(m, ax + bul_r * c1, tip_top, az + bul_r * s1, 0, 1, 0);
+                /* Side wall */
+                mesh_v(m, ax + bul_r * c0, tip_base, az + bul_r * s0, c0, 0, s0);
+                mesh_v(m, ax + bul_r * c0, tip_top,  az + bul_r * s0, c0, 0, s0);
+                mesh_v(m, ax + bul_r * c1, tip_top,  az + bul_r * s1, c1, 0, s1);
+                mesh_v(m, ax + bul_r * c0, tip_base, az + bul_r * s0, c0, 0, s0);
+                mesh_v(m, ax + bul_r * c1, tip_top,  az + bul_r * s1, c1, 0, s1);
+                mesh_v(m, ax + bul_r * c1, tip_base, az + bul_r * s1, c1, 0, s1);
+            }
+        }
+    }
+
+    m->valid = 1;
+    m->contact_count=cr_contact_build(m->verts,m->vert_count,top_y-base_y,
+                                      m->contact_verts,CR_CONTACT_MAX_VERTS);
+    if(m->contact_count<0) {
+        static int warned;
+        if(!warned) { fprintf(stderr,"route contact shadow: output limit reached\n");warned=1; }
+        m->contact_count=0;
+    }
+}
+
+void rpath_extrude(const route_path_t *p, route_mesh_t *m,
+                   float width, float base_y, float top_y,
+                   float t0, float t1) {
+    rpath_extrude_partial(p, m, width, base_y, top_y,
+                          t0, t1, 1, 1, 1);
+}
+
+/* ================================================================
+ * Transform + append -- for chaining maneuver route paths
+ * ================================================================ */
+
+void rpath_xform_append(route_path_t *dst, const route_path_t *src,
+                         float tx, float ty, float cos_r, float sin_r,
+                         float rot_rad) {
+    int i;
+    for (i = 0; i < src->seg_count; i++) {
+        if (dst->seg_count >= RPATH_MAX_SEGS) break;
+        const route_seg_t *s = &src->segs[i];
+        route_seg_t *d = &dst->segs[dst->seg_count++];
+        d->type = s->type;
+        if (s->type == RSEG_LINE) {
+            d->x0 = cos_r * s->x0 - sin_r * s->y0 + tx;
+            d->y0 = sin_r * s->x0 + cos_r * s->y0 + ty;
+            d->x1 = cos_r * s->x1 - sin_r * s->y1 + tx;
+            d->y1 = sin_r * s->x1 + cos_r * s->y1 + ty;
+        } else {
+            d->cx = cos_r * s->cx - sin_r * s->cy + tx;
+            d->cy = sin_r * s->cx + cos_r * s->cy + ty;
+            d->radius = s->radius;
+            d->start_rad = s->start_rad + rot_rad;
+            d->end_rad = s->end_rad + rot_rad;
+        }
+    }
+}
+
+/* ================================================================
+ * Debug overlay -- polyline + active window highlight
+ * ================================================================ */
+
+void rpath_draw_debug(const route_path_t *p, float t0, float t1) {
+    if (p->pt_count < 2) return;
+
+    float sd = t0 * p->total_length;
+    float ed = t1 * p->total_length;
+    float line_w = 0.003f;
+    float dot_r = 0.006f;
+    int i;
+
+    for (i = 0; i < p->pt_count - 1; i++) {
+        float mid_dist = (p->dist[i] + p->dist[i + 1]) * 0.5f;
+        if (mid_dist >= sd && mid_dist <= ed) {
+            /* Active window: yellow */
+            render_thick_line(p->px[i], p->py[i], p->px[i + 1], p->py[i + 1],
+                              line_w, 1.0f, 1.0f, 0.0f, 0.8f);
+        } else {
+            /* Inactive: dark grey */
+            render_thick_line(p->px[i], p->py[i], p->px[i + 1], p->py[i + 1],
+                              line_w, 0.3f, 0.3f, 0.3f, 0.5f);
+        }
+    }
+
+    /* Red dots at vertices */
+    for (i = 0; i < p->pt_count; i++) {
+        render_disc(p->px[i], p->py[i], dot_r, 8, 1.0f, 0.0f, 0.0f, 0.8f);
+    }
+}
+
+/* ================================================================
+ * Drawing -- uses render.c vertex buffer + flush
+ * ================================================================ */
+
+void rpath_draw(const route_mesh_t *m,
+                float r, float g, float b, float a) {
+    if (!m->valid || m->vert_count == 0) return;
+
+    render_set_material(RENDER_MAT_ROUTE_ACTIVE);
+    const cr_route_progress_map_t *projected=render_prepare_route_progress(m->progress_points,m->progress_count);
+
+    /* Draw in batches that fit the render.c vertex buffer (MAX_VERTS=1200) */
+    int drawn = 0;
+    while (drawn < m->vert_count) {
+        vb_reset();
+        int batch = m->vert_count - drawn;
+        if (batch > 1200) batch = 1200;
+        batch = (batch / 3) * 3;
+        if (batch == 0) break;
+
+        int i;
+        for (i = 0; i < batch; i++) {
+            int idx = (drawn + i) * 6;
+            float length=m->progress_end-m->progress_start;
+            float progress=projected ? cr_route_progress_at(projected,m->path_dist[drawn+i]) :
+                (length>1e-6f ? (m->path_dist[drawn+i]-m->progress_start)/length : 1.0f);
+            /* Do not clamp vertices: clipping the extension in the fragment
+             * shader keeps interpolation exact across the visible entry. */
+            vb_route_v(m->verts[idx], m->verts[idx+1], m->verts[idx+2],
+                 m->verts[idx+3], m->verts[idx+4], m->verts[idx+5],progress);
+        }
+        vb_flush(r, g, b, a);
+        drawn += batch;
+    }
+    render_contact_shadow(m->contact_verts,m->contact_count,a,m->contact_thickness);
+}
