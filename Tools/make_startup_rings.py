@@ -108,10 +108,11 @@ GLOW_DURATION = 3.2
 GLOW_STROKE = 6.0          # thinner white line, like the reference
 SEGMENTS = 3               # arc pieces per ring
 FLY_START, FLY_SPREAD, FLY_TIME = 0.05, 0.45, 1.25   # first piece, last start offset, sweep time
-FLY_SPIN = 3.6                                       # rad a piece spins clockwise into place
+FLY_SPIN = 3.6                                       # rad a piece spins into place
 GLOW_ZOOM_FROM, GLOW_ZOOM_TIME = 1.55, 2.2
-BLOOM_PEAK_T, BLOOM_PEAK, BLOOM_REST = 1.15, 1.7, 0.45  # bloom gain: peaks as pieces lock, settles
-GHOST_GAIN, GHOST_FADE = 0.28, 1.7                   # faint trailing arcs, gone by GHOST_FADE s
+BLOOM_PEAK_T, BLOOM_PEAK, BLOOM_REST = 1.15, 1.7, 0.55  # bloom gain: peaks as pieces lock, settles
+GHOST_GAIN, GHOST_FADE = 0.95, 1.9                   # thin trailing lines, gone by GHOST_FADE s
+GHOST_GAP, GHOST_WIDTH = 10.0, 2.4                   # px outside the piece's centre line, thickness
 
 
 def box_blur(img, radius, passes=3):
@@ -139,13 +140,14 @@ def render_glow():
     ys = np.arange(top, bottom, dtype=np.float32)[:, None] + 0.5
     seg_arc = 2.0 * np.pi / SEGMENTS
 
-    pieces = []   # (ring centre x, arc start angle, start offset dx, dy, spin, start time)
+    pieces = []   # (ring centre x, arc start angle, direction, spin, start time)
     for i, cx in enumerate(centers):
         base = rng.uniform(0.0, 2.0 * np.pi)
+        direction = 1.0 if i % 2 == 0 else -1.0   # neighbouring rings turn opposite ways
         for k in range(SEGMENTS):
             # The pieces stay on their ring and spin into place (no flight).
-            pieces.append((cx, base + k * seg_arc, 0.0, 0.0,
-                           -FLY_SPIN * rng.uniform(0.75, 1.0),
+            pieces.append((cx, base + k * seg_arc, direction,
+                           FLY_SPIN * rng.uniform(0.75, 1.0),
                            FLY_START + rng.uniform(0.0, FLY_SPREAD)))
 
     def arc_alpha(u, v, cx, cy, a0, length, radius, stroke, scale):
@@ -167,12 +169,12 @@ def render_glow():
         v = (ys - CENTER_Y) / scale + CENTER_Y
         line = np.zeros((bottom - top, right - left), dtype=np.float32)
         ghost = np.zeros_like(line)
-        locked = [all(t >= q[5] + FLY_TIME for q in pieces if q[0] == cx) for cx in centers]
+        locked = [all(t >= q[4] + FLY_TIME for q in pieces if q[0] == cx) for cx in centers]
         for cx, done in zip(centers, locked):
             if done:   # every piece home: one seamless ring, no joints
                 line = np.maximum(line, arc_alpha(u, v, cx, CENTER_Y, 0.0, 2.0 * np.pi,
                                                   RADIUS, GLOW_STROKE, scale))
-        for cx, a0, ox, oy, spin, t0 in pieces:
+        for cx, a0, direction, spin, t0 in pieces:
             p = (t - t0) / FLY_TIME
             if p <= 0.0 or locked[centers.index(cx)]:
                 continue
@@ -180,21 +182,25 @@ def render_glow():
             k = 1.0 - e                                   # 1 far away .. 0 locked in place
             length = seg_arc * (0.04 + 0.96 * e)          # a dot growing into its third
             appear = np.clip(p * 6.0, 0.0, 1.0)           # pieces fade in as they start
+            # Clockwise (direction 1): the head leads at the clockwise end and the piece turns
+            # clockwise into place; direction -1 mirrors both.
+            start = a0 - spin * k if direction > 0 else a0 + seg_arc - length + spin * k
             line = np.maximum(line, appear * arc_alpha(
-                u, v, cx + ox * k, CENTER_Y + oy * k, a0 + spin * k, length,
-                RADIUS, GLOW_STROKE, scale))
-            if t < GHOST_FADE and k > 0.02:
-                # A thin ghost a little outside, lagging behind the piece.
-                kk = min(1.0, k * 1.35)
-                ghost = np.maximum(ghost, arc_alpha(
-                    u, v, cx, CENTER_Y, a0 + spin * kk + 0.35, length * 0.7,
-                    RADIUS + 5.0, 1.6, scale) * (1.0 - t / GHOST_FADE))
+                u, v, cx, CENTER_Y, start, length, RADIUS, GLOW_STROKE, scale))
+            if t < GHOST_FADE and k > 0.03:
+                # A thin line a little outside the piece, along its tail, like a light trail.
+                tail = length * 0.4
+                gstart = start + 0.08 if direction > 0 else start + length - tail - 0.08
+                ghost = np.maximum(ghost, appear * arc_alpha(
+                    u, v, cx, CENTER_Y, gstart, tail, RADIUS + GHOST_GAP, GHOST_WIDTH, scale)
+                    * min(1.0, k * 3.0) * (1.0 - t / GHOST_FADE))
         # Bloom gain: rises with the flight, peaks as the pieces lock, settles to a soft halo.
         if t < BLOOM_PEAK_T:
             gain = BLOOM_PEAK * ease_in_out(t / BLOOM_PEAK_T)
         else:
             gain = BLOOM_REST + (BLOOM_PEAK - BLOOM_REST) * (1.0 - ease_out_cubic((t - BLOOM_PEAK_T) / 1.2))
-        bloom = 0.8 * box_blur(line, 4) + 0.6 * box_blur(line, 14)
+        # Tight glow plus a wide soft halo blurred off the rings themselves.
+        bloom = 0.8 * box_blur(line, 4) + 0.6 * box_blur(line, 12) + 0.45 * box_blur(line, 30)
         value = np.clip(line + GHOST_GAIN * ghost + gain * bloom, 0.0, 1.0)
         frame = np.zeros((HEIGHT, WIDTH, 4), dtype=np.uint8)
         frame[..., 3] = 255
