@@ -1,0 +1,38 @@
+MHI2Q-CarPlay-AltScreen 许可说明 / License overview
+
+Required Notice: Copyright (c) 2026 yuedizhibo (https://github.com/yuedizhibo/MHI2Q-CarPlay-AltScreen)
+
+Required Notice: Licensed under the PolyForm Noncommercial License 1.0.0 with the Additional Terms in LICENSE.ADDITIONAL-TERMS.md. Selling is prohibited. Paid installation is capped at CNY 100 per vehicle per installation.
+
+本仓库由几个许可不同的部分组成。以下说明自 V3.8 起适用；此前发布的版本仍按其发布时的许可执行。逐个目录的说明和版权见 Toolbox/carplay_alt_screen/NOTICE.md。
+
+1. 本项目原创部分：第二屏 hook（src/）、第二屏显示进程（mirror_display/）、安装 / 恢复 / 诊断脚本、绿色菜单、构建与校验脚本、说明文档。
+   许可：PolyForm Noncommercial 1.0.0 + 附加条款。禁止售卖；允许收费安装，但每台车每次的费用总额不超过人民币 100 元，其他币种按收费当时的汇率折算。
+   全文：Toolbox/carplay_alt_screen/LICENSE.POLYFORM-NONCOMMERCIAL-1.0.0.md
+         Toolbox/carplay_alt_screen/LICENSE.ADDITIONAL-TERMS.md
+
+2. 基于 Luka 的 mib2q-carplay-rgi 和 Allemon 的 mib2-carplay-rgi-altscreen 的部分：Java HMI（hmi/）、RGI 原生模块（rgi_native/、rgi_meta/）、RGI 渲染器（rgi_renderer/），包括本项目在其中新增和修改的代码，以及由它们编译出的程序。
+   许可：GPL-3.0。全文：Toolbox/carplay_alt_screen/LICENSE.GPL-3.0.txt
+
+3. 上游 MIB2 Toolbox 相关文件：MIT，见 LICENSE.TOOLBOX-MIT。
+
+4. Lanye-z 的 MMI Mirror 原始代码：Unlicense，见 Toolbox/carplay_alt_screen/mirror_display/release/LICENSE.MMI-MIRROR。
+
+5. 其他第三方文件（如 stb_image.h、Unicode 数据）保留各自原有许可。
+
+
+This repository consists of several parts with different licenses. This overview applies from V3.8 onward; earlier releases remain under the licenses they were released with. See Toolbox/carplay_alt_screen/NOTICE.md for the per-directory details and copyright.
+
+1. Original work of this project: the second-screen hook (src/), the second-screen display process (mirror_display/), the install, restore and diagnostic scripts, the green menu, the build and verification scripts, and the documentation.
+   License: PolyForm Noncommercial 1.0.0 + Additional Terms. Selling is prohibited. Paid installation is permitted, but the total charge per vehicle per installation may not exceed CNY 100; other currencies are converted at the exchange rate in effect at the time of the charge.
+   Full text: Toolbox/carplay_alt_screen/LICENSE.POLYFORM-NONCOMMERCIAL-1.0.0.md
+              Toolbox/carplay_alt_screen/LICENSE.ADDITIONAL-TERMS.md
+
+2. Parts based on Luka's mib2q-carplay-rgi and Allemon's mib2-carplay-rgi-altscreen: the Java HMI (hmi/), the RGI native module (rgi_native/, rgi_meta/) and the RGI renderer (rgi_renderer/), including the code this project added or changed in them and the programs built from them.
+   License: GPL-3.0. Full text: Toolbox/carplay_alt_screen/LICENSE.GPL-3.0.txt
+
+3. Upstream MIB2 Toolbox files: MIT, see LICENSE.TOOLBOX-MIT.
+
+4. The original code of Lanye-z's MMI Mirror: the Unlicense, see Toolbox/carplay_alt_screen/mirror_display/release/LICENSE.MMI-MIRROR.
+
+5. Other third-party files (such as stb_image.h and the Unicode data) keep their own licenses.

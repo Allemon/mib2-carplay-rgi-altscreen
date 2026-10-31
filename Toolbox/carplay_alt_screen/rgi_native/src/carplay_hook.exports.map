@@ -1,0 +1,10 @@
+{
+    global:
+        CinemoCreateIAP;
+        _ZN12NmeTransport4RecvER8NmeArrayIhE;
+        _ZN12NmeTransport4SendEPKhjPj;
+        _ZN14NmeIAP2Message6DecodeEPKhi;
+        _ZNK14NmeIAP2Message6EncodeER8NmeArrayIhE;
+    local:
+        *;
+};

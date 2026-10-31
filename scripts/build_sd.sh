@@ -1,126 +1,179 @@
 #!/bin/bash
 #
-# Build the complete MMI-Cockpit-Carplay SD card: AltScreen (CarPlay video on the VC)
-# with route guidance from this repo.
+# Build the complete MMI-Cockpit-Carplay SD card: MIB2 Toolbox + CarPlay AltScreen V3.8 Fix1
+# + this fork's additions (cluster map area / shift, H.264 dump, verbose Java logs).
 #
-#   STOCK_JAR=MU1329-base.jar ./scripts/build_sd.sh              # build all, stage build/sd/
-#   SKIP_BUILD=1 ./scripts/build_sd.sh                           # reuse build/ artifacts
-#   SD=/Volumes/SD32 STOCK_JAR=MU1329-base.jar ./scripts/build_sd.sh   # also sync onto the card
-#   ALTSCREEN_FULL_FPS=0 ./scripts/build_sd.sh                   # stock AltScreen video binaries (15 fps)
+#   ./scripts/build_sd.sh                      # build the two changed binaries, stage build/sd/
+#   SKIP_BUILD=1 ./scripts/build_sd.sh         # reuse build/native/
+#   SD=/Volumes/SD32 ./scripts/build_sd.sh     # also write it onto the card
+#   RELEASE_ZIP=~/Downloads/V3.8Fix1.zip ./scripts/build_sd.sh   # no download
+#   UPSTREAM_MIRROR=1 ./scripts/build_sd.sh    # no QNX toolchain: upstream's map display, so
+#                                              # "Cluster map shift" has no effect on this card
 #
-# Inputs:  altscreen/   the AltScreen SD tree (scripts, mirror sidecar, universal preload,
-#                       GEM menu, MIB2 Toolbox) with @CARPLAY_JAR_SIZE@/@CARPLAY_JAR_CKSUM@
-#                       placeholders where its scripts pin the HMI JAR identity
-#          build/       carplay_hook.jar, libcarplay_hook.so, maneuver_render (built here)
-#          deploy/      the RGI wrapper/supervisor scripts; deploy/altscreen/carplay_child.json
-# Output:  build/sd/    copy its contents onto the SD root
+# Inputs:  sd_base/                 MIB2 Toolbox tree of the V3.8 Fix1 release card, without
+#                                   the AltScreen overlay
+#          Toolbox/ (this repo)     the overlay: scripts, GEM menu, licenses, BUILD_INFO, ...
+#          SHA256SUMS-SD.txt        upstream's overlay list; also pins the binaries below
+#          build/native/            libcarplay_altscreen.so, carplay-alt111-mirror-display
+#                                   (scripts/build_native.sh), carplay_hook-basevideo3.jar
+#                                   (scripts/build_hmi_jar.sh: the release JAR with the fork's
+#                                   changed classes; needs your stock HMI jar, STOCK_JAR=)
+#          V3.8Fix1.zip (release)   libcarplay_rgi_meta.so and maneuver_render, which the fork
+#                                   does not change; each is checked against its pinned hash
+# Output:  build/sd/                copy its contents onto the SD root
 #
-# The card's MMI-Cockpit-Carplay/ (AltScreen stock backups, logs, state) is never part of
-# the output and never touched by SD=: RESTORE ORIGINAL needs the backups on that card.
+# The card's MMI-Cockpit-Carplay/ (stock backups, logs, state) is never part of the output and
+# never touched by SD=: RESTORE ORIGINAL needs the backups on that card.
 set -euo pipefail
 export COPYFILE_DISABLE=1   # macOS tar: no AppleDouble ._ files on the FAT card
 
-[ "$#" -eq 0 ] || { echo "usage: [STOCK_JAR=<jar>] [SKIP_BUILD=1] [SD=<card>] ./scripts/build_sd.sh"; exit 2; }
+[ "$#" -eq 0 ] || { echo "usage: [SKIP_BUILD=1] [SD=<card>] [RELEASE_ZIP=<zip>] [UPSTREAM_MIRROR=1] ./scripts/build_sd.sh"; exit 2; }
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SRC="$PROJECT_DIR/altscreen"
-OUT="${OUT:-$PROJECT_DIR/build/sd}"
-JAR="$PROJECT_DIR/build/carplay_hook.jar"
-RGI_DIR=Toolbox/carplay_alt_screen/rgi
-JAR_DEST=Toolbox/carplay_alt_screen/hmi/carplay_hook-basevideo3.jar
-PINNED_SCRIPTS="install_mmi_cockpit_carplay_rx.sh start_mmi_cockpit_carplay_rx_test.sh status_mmi_cockpit_carplay_test.sh"
+OUT="$PROJECT_DIR/build/sd"
+NATIVE="$PROJECT_DIR/build/native"
+CACHE="$PROJECT_DIR/build/cache"
+SUMS="$PROJECT_DIR/SHA256SUMS-SD.txt"
+RELEASE_URL=https://github.com/yuedizhibo/MHI2Q-CarPlay-AltScreen/releases/download/v3.8-fix1/V3.8Fix1.zip
+RELEASE_SHA256=ed56797fab604e402754143127042e50446169f3910eb561ec87a04ba82dd288
+ALT=Toolbox/carplay_alt_screen
+# Built here from this repo's sources.
+BUILT_HOOK=$ALT/universal/libcarplay_altscreen.so
+BUILT_MIRROR=$ALT/mirror_display/release/carplay-alt111-mirror-display
+BUILT_JAR=$ALT/hmi/carplay_hook-basevideo3.jar
+# Unchanged upstream binaries, taken from the release.
+FROM_RELEASE="$ALT/rgi_meta/libcarplay_rgi_meta.so $ALT/rgi_renderer/release/maneuver_render"
+# Files the fork adds to upstream's overlay list.
+FORK_FILES="
+Toolbox/scripts/cluster_area.sh
+Toolbox/scripts/cluster_area_full.sh
+Toolbox/scripts/cluster_area_w1200.sh
+Toolbox/scripts/cluster_area_w1140.sh
+Toolbox/scripts/cluster_area_w1080.sh
+Toolbox/scripts/cluster_shift.sh
+Toolbox/scripts/cluster_shift_off.sh
+Toolbox/scripts/cluster_shift_sporttest.sh
+Toolbox/scripts/dump_cluster_h264.sh
+Toolbox/scripts/rgi_verbose.sh
+Toolbox/scripts/rgi_verbose_on.sh
+Toolbox/scripts/rgi_verbose_off.sh
+Toolbox/scripts/repair_after_hybrid.sh
+Toolbox/scripts/rgi_backing.sh
+Toolbox/scripts/rgi_backing_on.sh
+Toolbox/scripts/rgi_backing_off.sh"
+NATIVE_FILES="$NATIVE/libcarplay_altscreen.so $NATIVE/carplay-alt111-mirror-display $NATIVE/carplay_hook-basevideo3.jar"
+NATIVE_WHAT=all
+if [ "${UPSTREAM_MIRROR:-0}" = 1 ]; then
+    FROM_RELEASE="$FROM_RELEASE $BUILT_MIRROR"
+    NATIVE_FILES="$NATIVE/libcarplay_altscreen.so $NATIVE/carplay_hook-basevideo3.jar"
+    NATIVE_WHAT=hook
+    echo "WARN: UPSTREAM_MIRROR=1 - the card gets upstream's map display; 'Cluster map shift' does nothing on it."
+fi
 
-[ -d "$SRC/Toolbox" ] || { echo "ERROR: $SRC is not an AltScreen SD tree"; exit 1; }
+if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"; else SHA="shasum -a 256"; fi
+sha_of() { $SHA "$1" | cut -d' ' -f1; }
+pinned() { awk -v p="$1" '$2 == p { print $1 }' "$SUMS"; }
+
+[ -d "$PROJECT_DIR/sd_base/Toolbox" ] || { echo "ERROR: sd_base/ is not an SD tree"; exit 1; }
+
+# The release card, for the binaries the fork does not change.
+ZIP=${RELEASE_ZIP:-$CACHE/V3.8Fix1.zip}
+if [ ! -f "$ZIP" ]; then
+    mkdir -p "$CACHE"
+    echo "=== downloading $RELEASE_URL ==="
+    curl -fL --retry 3 -o "$ZIP.part" "$RELEASE_URL" && mv -f "$ZIP.part" "$ZIP"
+fi
+[ "$(sha_of "$ZIP")" = "$RELEASE_SHA256" ] || { echo "ERROR: $ZIP is not the V3.8 Fix1 release (sha256)"; exit 1; }
 
 if [ "${SKIP_BUILD:-0}" != 1 ]; then
-    STOCK_JAR="${STOCK_JAR:-}" bash "$PROJECT_DIR/scripts/build_java.sh"
-    bash "$PROJECT_DIR/scripts/build_hook.sh"
-    bash "$PROJECT_DIR/scripts/build_renderers.sh"
+    bash "$PROJECT_DIR/scripts/build_native.sh" "$NATIVE_WHAT"
+    RELEASE_ZIP="$ZIP" bash "$PROJECT_DIR/scripts/build_hmi_jar.sh"
 fi
-for f in "$JAR" "$PROJECT_DIR/build/libcarplay_hook.so" "$PROJECT_DIR/build/maneuver_render"; do
-    [ -s "$f" ] || { echo "ERROR: missing build artifact $f"; exit 1; }
+for f in $NATIVE_FILES; do
+    [ -s "$f" ] || { echo "ERROR: missing $f - run ./scripts/build_native.sh / build_hmi_jar.sh"; exit 1; }
+done
+REL="$CACHE/release"
+rm -rf "$REL"; mkdir -p "$REL"
+for f in $FROM_RELEASE; do
+    unzip -q -o "$ZIP" "$f" -d "$REL"
+    [ "$(sha_of "$REL/$f")" = "$(pinned "$f")" ] || { echo "ERROR: release $f does not match SHA256SUMS-SD.txt"; exit 1; }
 done
 
-echo "=== MMI-Cockpit-Carplay SD (AltScreen + RGI) -> $OUT ==="
-case "$OUT" in "$PROJECT_DIR"/build/*) rm -rf "$OUT" ;; *) [ ! -e "$OUT" ] || { echo "ERROR: $OUT exists; remove it or use a path under build/"; exit 1; } ;; esac
-mkdir -p "$OUT"
-(cd "$SRC" && tar --exclude=.DS_Store --exclude='._*' -cf - .) | (cd "$OUT" && tar -xf -)
-rm -f "$OUT/SHA256SUMS-SD.list"
+echo "=== MMI-Cockpit-Carplay SD (V3.8 Fix1 + fork) -> $OUT ==="
+rm -rf "$OUT"; mkdir -p "$OUT"
+(cd "$PROJECT_DIR/sd_base" && tar --exclude=.DS_Store --exclude='._*' -cf - .) | (cd "$OUT" && tar -xf -)
 
-# AltScreen reads back only every second decoded cluster frame and its mirror sidecar
-# polls every 20 ms with a fixed 33 ms period (30 fps in, 15-22 fps on the VC);
-# tools/patch_altscreen_fps.py fixes both binaries.
-ALTS_LIB=Toolbox/carplay_alt_screen/universal/libcarplay_altscreen.so
-ALTS_MIRROR_DIR=Toolbox/carplay_alt_screen/mirror_display/release
-if [ "${ALTSCREEN_FULL_FPS:-1}" = 1 ]; then
-    for f in "$ALTS_LIB" "$ALTS_MIRROR_DIR/carplay-alt111-mirror-display"; do
-        python3 "$PROJECT_DIR/tools/patch_altscreen_fps.py" "$SRC/$f" "$OUT/$f" >/dev/null
-    done
-    # Keep the sidecar's own checksum list true to what ships.
-    if command -v sha256sum >/dev/null 2>&1; then MSHA="sha256sum"; else MSHA="shasum -a 256"; fi
-    new_sum=$(cd "$OUT/$ALTS_MIRROR_DIR" && $MSHA carplay-alt111-mirror-display | cut -d' ' -f1)
-    sed -e "s/^[0-9a-f]\{64\}  carplay-alt111-mirror-display\$/$new_sum  carplay-alt111-mirror-display/" \
-        "$OUT/$ALTS_MIRROR_DIR/SHA256SUMS" > "$OUT/$ALTS_MIRROR_DIR/SHA256SUMS.tmp"
-    mv "$OUT/$ALTS_MIRROR_DIR/SHA256SUMS.tmp" "$OUT/$ALTS_MIRROR_DIR/SHA256SUMS"
-    (cd "$OUT/$ALTS_MIRROR_DIR" && $MSHA -c SHA256SUMS >/dev/null) \
-        || { echo "ERROR: mirror SHA256SUMS does not match the patched sidecar"; exit 1; }
-    ALTS_FPS="30 fps (every frame read back, 4 ms sidecar poll)"
-else
-    ALTS_FPS="stock (15 fps)"
-fi
-
-# RGI native half, installed by Toolbox/scripts/rgi_companion.sh from AltScreen INSTALL.
-mkdir -p "$OUT/$RGI_DIR"
-cp "$PROJECT_DIR/build/libcarplay_hook.so" "$PROJECT_DIR/build/maneuver_render" \
-   "$PROJECT_DIR/maneuver_render/resources/flag_atlas.rgba" \
-   "$PROJECT_DIR/deploy/smartphone_integrator/carplay_startup.sh" \
-   "$PROJECT_DIR/deploy/smartphone_integrator/carplay_monitor.sh" \
-   "$PROJECT_DIR/deploy/smartphone_integrator/carplay_processes.sh" \
-   "$PROJECT_DIR/deploy/smartphone_integrator/carplay_cleanup.sh" \
-   "$PROJECT_DIR/deploy/altscreen/carplay_child.json" "$OUT/$RGI_DIR/"
-chmod 755 "$OUT/$RGI_DIR"/*.sh "$OUT/$RGI_DIR/maneuver_render" "$OUT/$RGI_DIR/libcarplay_hook.so"
-
-# The one HMI JAR (RGI Java + the AltScreen ctx-81 video context). AltScreen's INSTALL,
-# START and STATUS refuse any JAR whose POSIX cksum/size differ from the pinned pair.
-mkdir -p "$(dirname "$OUT/$JAR_DEST")"   # hmi/ holds only this generated JAR, so git has no such dir
-cp "$JAR" "$OUT/$JAR_DEST"
-set -- $(cksum < "$JAR")
-JAR_CKSUM=$1 JAR_SIZE=$2
-for s in $PINNED_SCRIPTS; do
-    f="$OUT/Toolbox/scripts/$s"
-    grep -q '^EXPECTED_SIZE=@CARPLAY_JAR_SIZE@$' "$f" && grep -q '^EXPECTED_CKSUM=@CARPLAY_JAR_CKSUM@$' "$f" \
-        || { echo "ERROR: $s lost its JAR identity placeholders"; exit 1; }
-    sed -e "s/@CARPLAY_JAR_SIZE@/$JAR_SIZE/" -e "s/@CARPLAY_JAR_CKSUM@/$JAR_CKSUM/" "$f" > "$f.tmp"
-    mv "$f.tmp" "$f"; chmod 755 "$f"
+overlay=$(awk '{ print $2 }' "$SUMS"; printf '%s\n' $FORK_FILES)
+for f in $overlay; do
+    mkdir -p "$OUT/$(dirname "$f")"
+    case " $FROM_RELEASE " in *" $f "*) cp "$REL/$f" "$OUT/$f"; continue ;; esac
+    case "$f" in
+        "$BUILT_HOOK") cp "$NATIVE/libcarplay_altscreen.so" "$OUT/$f" ;;
+        "$BUILT_MIRROR") cp "$NATIVE/carplay-alt111-mirror-display" "$OUT/$f" ;;
+        "$BUILT_JAR") cp "$NATIVE/carplay_hook-basevideo3.jar" "$OUT/$f" ;;
+        *) [ -f "$PROJECT_DIR/$f" ] || { echo "ERROR: overlay file missing in the repo: $f"; exit 1; }
+           cp "$PROJECT_DIR/$f" "$OUT/$f" ;;
+    esac
 done
-if grep -rl '@CARPLAY_JAR_' "$OUT/Toolbox" >/dev/null; then
-    echo "ERROR: unresolved JAR placeholders:"; grep -rl '@CARPLAY_JAR_' "$OUT/Toolbox"; exit 1
-fi
+chmod 755 "$OUT"/Toolbox/scripts/*.sh "$OUT/$BUILT_MIRROR" "$OUT/$ALT/rgi_renderer/release/maneuver_render" \
+          "$OUT"/$ALT/mirror_display/release/*.sh
+
+# Keep the informational checksums next to the rebuilt binaries true to what ships.
+MIRROR_SUMS="$OUT/$ALT/mirror_display/release/SHA256SUMS"
+mirror_sum=$(sha_of "$OUT/$BUILT_MIRROR")
+sed -e "s/^[0-9a-f]\{64\}  carplay-alt111-mirror-display\$/$mirror_sum  carplay-alt111-mirror-display/" \
+    "$MIRROR_SUMS" > "$MIRROR_SUMS.tmp" && mv -f "$MIRROR_SUMS.tmp" "$MIRROR_SUMS"
+(cd "$(dirname "$MIRROR_SUMS")" && $SHA -c SHA256SUMS >/dev/null) \
+    || { echo "ERROR: mirror SHA256SUMS does not match the shipped files"; exit 1; }
+hook_sum=$(sha_of "$OUT/$BUILT_HOOK")
+HMI_INFO="$OUT/$ALT/hmi/BUILD_INFO.txt"
+grep -q '^universal_runtime_sha256=' "$HMI_INFO" || { echo "ERROR: $HMI_INFO lost universal_runtime_sha256"; exit 1; }
+sed -e "s/^universal_runtime_sha256=.*/universal_runtime_sha256=$hook_sum/" "$HMI_INFO" > "$HMI_INFO.tmp"
+mv -f "$HMI_INFO.tmp" "$HMI_INFO"
+# The installer pins the JAR by the size/cksum in BUILD_INFO.txt: pin the one that ships.
+set -- $(cksum < "$OUT/$BUILT_JAR")
+JAR_CKSUM=$1 JAR_SIZE=$2 JAR_SHA=$(sha_of "$OUT/$BUILT_JAR")
+for key in jar_size jar_cksum jar_sha256; do
+    [ "$(grep -c "^$key=" "$HMI_INFO")" = 1 ] || { echo "ERROR: $HMI_INFO needs exactly one $key="; exit 1; }
+done
+sed -e "s/^jar_size=.*/jar_size=$JAR_SIZE/" -e "s/^jar_cksum=.*/jar_cksum=$JAR_CKSUM/" \
+    -e "s/^jar_sha256=.*/jar_sha256=$JAR_SHA/" "$HMI_INFO" > "$HMI_INFO.tmp"
+mv -f "$HMI_INFO.tmp" "$HMI_INFO"
 
 # Everything the head unit runs must parse as sh (QNX /bin/sh is pdksh).
-for f in "$OUT"/Toolbox/scripts/*.sh "$OUT/$RGI_DIR"/*.sh "$OUT"/Toolbox/carplay_alt_screen/mirror_display/release/*.sh; do
+for f in "$OUT"/Toolbox/scripts/*.sh "$OUT"/$ALT/mirror_display/release/*.sh; do
     sh -n "$f" || { echo "ERROR: shell syntax: $f"; exit 1; }
+done
+# Every GEM entry must name a script that ships.
+grep -o '/eso/hmi/engdefs/scripts/mqb/[A-Za-z0-9_]*\.sh' "$OUT/Toolbox/GEM/mqb-carplayAltScreen.esd" | sort -u |
+while read -r s; do
+    [ -f "$OUT/Toolbox/scripts/${s##*/}" ] || { echo "ERROR: GEM names a missing script: ${s##*/}"; exit 1; }
 done
 
 # SD integrity list (sha256sum -c SHA256SUMS-SD.txt on the card).
-if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"; else SHA="shasum -a 256"; fi
 ( cd "$OUT"
-  while IFS= read -r f; do
-      [ -n "$f" ] || continue
-      [ -f "$f" ] || { echo "ERROR: SHA256SUMS-SD.list names a missing file: $f" >&2; exit 1; }
-      $SHA "$f"
-  done < "$SRC/SHA256SUMS-SD.list" > SHA256SUMS-SD.txt
+  for f in $overlay; do $SHA "$f"; done > SHA256SUMS-SD.txt
   $SHA -c SHA256SUMS-SD.txt >/dev/null )
 
-echo "  jar: $JAR_DEST size=$JAR_SIZE cksum=$JAR_CKSUM"
-echo "  altscreen video: $ALTS_FPS"
-echo "  rgi: $RGI_DIR ($(ls "$OUT/$RGI_DIR" | wc -l | tr -d ' ') files)"
-echo "  sums: SHA256SUMS-SD.txt ($(wc -l < "$OUT/SHA256SUMS-SD.txt" | tr -d ' ') files, verified)"
+echo "  hook:   $BUILT_HOOK sha256=$hook_sum"
+echo "  mirror: $BUILT_MIRROR sha256=$mirror_sum"
+echo "  jar:    $BUILT_JAR size=$JAR_SIZE cksum=$JAR_CKSUM"
+echo "  from release: $(echo $FROM_RELEASE | wc -w | tr -d ' ') binaries, pinned"
+echo "  sums:   SHA256SUMS-SD.txt ($(wc -l < "$OUT/SHA256SUMS-SD.txt" | tr -d ' ') files, verified)"
 
 if [ -n "${SD:-}" ]; then
     [ -d "$SD" ] || { echo "ERROR: SD=$SD is not a directory"; exit 1; }
-    [ -d "$SD/MMI-Cockpit-Carplay" ] || echo "WARN: $SD has no MMI-Cockpit-Carplay/ (no AltScreen stock backups on this card yet)"
-    echo "=== sync -> $SD (MMI-Cockpit-Carplay/ untouched, nothing deleted) ==="
+    [ -d "$SD/MMI-Cockpit-Carplay" ] || echo "WARN: $SD has no MMI-Cockpit-Carplay/ (no stock backups on this card yet)"
+    if [ -d "$SD/Toolbox/carplay_alt_screen/rgi" ]; then
+        echo "ERROR: $SD holds the old luka+AltScreen hybrid (Toolbox/carplay_alt_screen/rgi/)."
+        echo "  Run RESTORE ORIGINAL with that card first and reboot (see README, 'Coming from the hybrid'),"
+        echo "  then remove Toolbox/carplay_alt_screen/rgi/ from the card and run this again."
+        exit 1
+    fi
+    echo "=== sync -> $SD (MMI-Cockpit-Carplay/ untouched) ==="
+    # The AltScreen payload is entirely generated: replace it so no stale file of an older
+    # build stays behind (V3.8 no longer uses logo.rgba / watermark.rgba, for one).
+    rm -rf "$SD/$ALT"
     STAMP="$PROJECT_DIR/build/.sd-sync-stamp"; : > "$STAMP"
     (cd "$OUT" && tar -cf - .) | (cd "$SD" && tar -xf -)
     # macOS stores new files' xattrs as AppleDouble ._* on FAT; drop the ones this copy made.
@@ -129,4 +182,4 @@ if [ -n "${SD:-}" ]; then
     sync
     (cd "$SD" && $SHA -c SHA256SUMS-SD.txt >/dev/null) && echo "  card verified against SHA256SUMS-SD.txt"
 fi
-echo "Done. Next on the car: Toolbox -> Update Toolbox, then MMI-Cockpit-Carplay -> INSTALL, reboot, START, reboot."
+echo "Done. On the car: MQBCoding -> Update Toolbox, then MMI-Cockpit-Carplay -> one INSTALL entry, reboot."
