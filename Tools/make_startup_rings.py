@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Render the fork's startup clip, one of two styles:
 
-  glow (default)  arc pieces of the four rings fly in from around the badge, spinning, and lock
-                  into the rings with a bright white bloom and faint ghost arcs; the bloom then
-                  settles to a soft halo around crisp white rings and holds
+  glow (default)  each ring is drawn by arc pieces that spin around it while they grow from a
+                  dot into the closed ring, with faint ghost arcs and a bright white bloom, as the
+                  whole badge zooms out to its final size; the bloom then settles to a soft halo
+                  around crisp white rings and holds
   draw            four silver rings drawn on black while they settle from a slight zoom-in to
                   their final size, one soft light sheen, hold
 
@@ -106,9 +107,9 @@ def render():
 GLOW_DURATION = 3.2
 GLOW_STROKE = 6.0          # thinner white line, like the reference
 SEGMENTS = 3               # arc pieces per ring
-FLY_START, FLY_SPREAD, FLY_TIME = 0.10, 0.55, 0.95   # first piece, last start offset, flight time
-FLY_DIST, FLY_SPIN = 110.0, 2.6                      # start offset (px) and rotation (rad) scale
-GLOW_ZOOM_FROM, GLOW_ZOOM_TIME = 1.08, 2.0
+FLY_START, FLY_SPREAD, FLY_TIME = 0.05, 0.45, 1.25   # first piece, last start offset, sweep time
+FLY_SPIN = 3.6                                       # rad a piece spins clockwise into place
+GLOW_ZOOM_FROM, GLOW_ZOOM_TIME = 1.55, 2.2
 BLOOM_PEAK_T, BLOOM_PEAK, BLOOM_REST = 1.15, 1.7, 0.45  # bloom gain: peaks as pieces lock, settles
 GHOST_GAIN, GHOST_FADE = 0.28, 1.7                   # faint trailing arcs, gone by GHOST_FADE s
 
@@ -142,12 +143,9 @@ def render_glow():
     for i, cx in enumerate(centers):
         base = rng.uniform(0.0, 2.0 * np.pi)
         for k in range(SEGMENTS):
-            a0 = base + k * seg_arc
-            mid = a0 + seg_arc / 2.0
-            direction = mid + rng.uniform(-0.6, 0.6)      # mostly outward from the ring
-            dist = FLY_DIST * rng.uniform(0.6, 1.2)
-            pieces.append((cx, a0, np.sin(direction) * dist, -np.cos(direction) * dist,
-                           FLY_SPIN * rng.uniform(-1.0, 1.0),
+            # The pieces stay on their ring and spin into place (no flight).
+            pieces.append((cx, base + k * seg_arc, 0.0, 0.0,
+                           -FLY_SPIN * rng.uniform(0.75, 1.0),
                            FLY_START + rng.uniform(0.0, FLY_SPREAD)))
 
     def arc_alpha(u, v, cx, cy, a0, length, radius, stroke, scale):
@@ -180,8 +178,8 @@ def render_glow():
                 continue
             e = ease_out_cubic(p)
             k = 1.0 - e                                   # 1 far away .. 0 locked in place
-            length = seg_arc * (0.35 + 0.65 * e) + (0.02 if p >= 1.0 else 0.0)  # tiny overlap
-            appear = np.clip(p * 4.0, 0.0, 1.0)           # pieces fade in as they set off
+            length = seg_arc * (0.04 + 0.96 * e)          # a dot growing into its third
+            appear = np.clip(p * 6.0, 0.0, 1.0)           # pieces fade in as they start
             line = np.maximum(line, appear * arc_alpha(
                 u, v, cx + ox * k, CENTER_Y + oy * k, a0 + spin * k, length,
                 RADIUS, GLOW_STROKE, scale))
@@ -189,7 +187,7 @@ def render_glow():
                 # A thin ghost a little outside, lagging behind the piece.
                 kk = min(1.0, k * 1.35)
                 ghost = np.maximum(ghost, arc_alpha(
-                    u, v, cx + ox * kk, CENTER_Y + oy * kk, a0 + spin * kk - 0.25, length * 0.8,
+                    u, v, cx, CENTER_Y, a0 + spin * kk + 0.35, length * 0.7,
                     RADIUS + 5.0, 1.6, scale) * (1.0 - t / GHOST_FADE))
         # Bloom gain: rises with the flight, peaks as the pieces lock, settles to a soft halo.
         if t < BLOOM_PEAK_T:
