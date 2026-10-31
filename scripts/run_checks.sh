@@ -31,6 +31,7 @@ else
 fi
 
 bash checks/gem_scripts_check.sh && pass "GEM scripts" || fail "GEM scripts"
+bash checks/repair_after_hybrid_check.sh && pass "repair after hybrid" || fail "repair after hybrid"
 
 if command -v clang >/dev/null 2>&1; then
     ok=1

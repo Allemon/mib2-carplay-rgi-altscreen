@@ -54,7 +54,8 @@ Toolbox/scripts/cluster_shift_sporttest.sh
 Toolbox/scripts/dump_cluster_h264.sh
 Toolbox/scripts/rgi_verbose.sh
 Toolbox/scripts/rgi_verbose_on.sh
-Toolbox/scripts/rgi_verbose_off.sh"
+Toolbox/scripts/rgi_verbose_off.sh
+Toolbox/scripts/repair_after_hybrid.sh"
 NATIVE_FILES="$NATIVE/libcarplay_altscreen.so $NATIVE/carplay-alt111-mirror-display"
 NATIVE_WHAT=all
 if [ "${UPSTREAM_MIRROR:-0}" = 1 ]; then
