@@ -593,6 +593,36 @@ static struct alt_layout_rects alt_layout_rects(void) {
     return r;
 }
 
+/*
+ * Optional safeArea bottom edge (MMI-Cockpit-Carplay fork, GEM "Map bottom edge").
+ *
+ * Google Maps and Waze put the vehicle just above the safeArea's bottom edge. V3.5 put that edge
+ * at y=450, where the stock VC lower info bar (road name | arrival time) covers it.
+ * state/cluster-safe-bottom.txt (cluster_safe_bottom.sh) moves the edge up, so those apps draw
+ * the vehicle above the bar; the top stays at 72. Read when the viewAreas are built (/info),
+ * so a change applies on the next phone connection. No file or a value outside 330..450 keeps
+ * V3.5's 450.
+ */
+#define ALT_SAFE_TOP 72u
+#define ALT_SAFE_BOTTOM_DEFAULT 450u
+static uint32_t alt_safe_height(void) {
+    char text[16];
+    char *end = NULL;
+    long bottom;
+    FILE *f = fopen(ALT_CARD_STATE_DIR "cluster-safe-bottom.txt", "r");
+    if (!f) return ALT_SAFE_BOTTOM_DEFAULT - ALT_SAFE_TOP;
+    text[0] = 0;
+    if (!fgets(text, sizeof(text), f)) text[0] = 0;
+    fclose(f);
+    alt_trim_line(text);
+    bottom = strtol(text, &end, 10);
+    if (end == text || *end || bottom < 330 || bottom > (long)ALT_SAFE_BOTTOM_DEFAULT) {
+        altscreen_log("ALTAREA_SAFE_BOTTOM ignored value=%s reason=invalid", text);
+        return ALT_SAFE_BOTTOM_DEFAULT - ALT_SAFE_TOP;
+    }
+    return (uint32_t)bottom - ALT_SAFE_TOP;
+}
+
 static const char *alt_cluster_url_for_card(int card_mode, const char **layout_name) {
     switch (card_mode) {
     case 1: *layout_name = "card-left"; return CP_ALT_CLUSTER_CARD_URL_LEFT;
@@ -659,20 +689,20 @@ static int alt_load_measured_k1004_safe_area(uint32_t display_w,
      */
     if (!strcmp(view, "SMALL")) {
         r.x = g.small_x;
-        r.y = 72u;
+        r.y = ALT_SAFE_TOP;
         r.w = g.small_w;
-        r.h = 378u;
+        r.h = alt_safe_height();
         r.physical_w = g.small_w;
-        r.physical_h = 378u;
+        r.physical_h = r.h;
         r.renderer_dx = small_dx;
         r.renderer_dy = small_dy;
     } else if (!strcmp(view, "FULL")) {
         r.x = g.full_x;
-        r.y = 72u;
+        r.y = ALT_SAFE_TOP;
         r.w = g.full_w;
-        r.h = 378u;
+        r.h = alt_safe_height();
         r.physical_w = g.full_w;
-        r.physical_h = 378u;
+        r.physical_h = r.h;
         r.renderer_dx = 0;
         r.renderer_dy = 0;
     } else {
@@ -733,13 +763,13 @@ static void alt_resolve_cluster_safe_area(uint32_t display_w,
     if (alt_is_measured_b9_canvas(display_w, display_h)) {
         struct alt_layout_rects g = alt_layout_rects();
         out->x = g.full_x;
-        out->y = 72u;
+        out->y = ALT_SAFE_TOP;
         out->w = g.full_w;
-        out->h = 378u;
+        out->h = alt_safe_height();
         out->physical_x = (int)g.full_x;
         out->physical_y = 75;
         out->physical_w = g.full_w;
-        out->physical_h = 378u;
+        out->physical_h = out->h;
         strncpy(out->source, "k1004-default-v35-72-450-before-hmi",
                 sizeof(out->source) - 1u);
     } else {
@@ -873,9 +903,12 @@ static cf_obj make_cluster_layout_view_areas(uint32_t w, uint32_t h,
 
     memset(&full, 0, sizeof(full));
     full.x = g.full_x;
-    full.y = 72u;
+    full.y = ALT_SAFE_TOP;
     full.w = g.full_w;
-    full.h = 378u;
+    full.h = alt_safe_height();
+    if (full.h != ALT_SAFE_BOTTOM_DEFAULT - ALT_SAFE_TOP)
+        altscreen_log("ALTAREA_SAFE_BOTTOM applied bottom=%u top=%u height=%u",
+                      ALT_SAFE_TOP + full.h, ALT_SAFE_TOP, full.h);
     if (!full.h || !alt_safe_rect_valid(&full, view_w, h)) goto fail;
 
     v = rect_dict(view_w, h, 0u, 0u);
@@ -889,9 +922,9 @@ static cf_obj make_cluster_layout_view_areas(uint32_t w, uint32_t h,
 
     memset(&small, 0, sizeof(small));
     small.x = g.small_x;
-    small.y = 72u;
+    small.y = ALT_SAFE_TOP;
     small.w = g.small_w;
-    small.h = 378u;
+    small.h = full.h;
     if (!small.h || !alt_safe_rect_valid(&small, view_w, h)) goto fail;
 
     v = rect_dict(view_w, h, 0u, 0u);

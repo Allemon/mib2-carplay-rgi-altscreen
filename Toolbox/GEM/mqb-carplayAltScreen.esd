@@ -63,6 +63,22 @@ script
    label   "Cluster map area: 1080 px (Amap/Baidu, no card)"
 
 script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_safe_bottom_normal.sh"
+   label   "Map bottom edge: normal (450)"
+
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_safe_bottom_420.sh"
+   label   "Map bottom edge: 420 (vehicle higher)"
+
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_safe_bottom_400.sh"
+   label   "Map bottom edge: 400 (vehicle higher)"
+
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_safe_bottom_380.sh"
+   label   "Map bottom edge: 380 (vehicle highest)"
+
+script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_shift_off.sh"
    label   "Cluster map shift: off"
 

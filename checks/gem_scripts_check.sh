@@ -56,6 +56,12 @@ expect_file "$STATE/cluster-shift.txt" "small_dx=-476"
 run 0 "CLUSTER_SHIFT=off none" "$S/cluster_shift_off.sh"
 expect_file "$STATE/cluster-shift.txt" -
 
+run 0 "CLUSTER_SAFE_BOTTOM=400 bottom=400" "$S/cluster_safe_bottom_400.sh"
+expect_file "$STATE/cluster-safe-bottom.txt" 400
+run 0 "CLUSTER_SAFE_BOTTOM=normal bottom=450" "$S/cluster_safe_bottom_normal.sh"
+expect_file "$STATE/cluster-safe-bottom.txt" -
+run 2 "usage" "$S/cluster_safe_bottom.sh" 300
+
 run 0 "RGI_BACKING=off applies=LIVE" "$S/rgi_backing_off.sh"
 expect_file "$STATE/rgi-backing-off" off
 run 0 "RGI_BACKING=on applies=LIVE" "$S/rgi_backing_on.sh"

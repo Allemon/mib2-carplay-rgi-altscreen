@@ -178,3 +178,8 @@
 !/Toolbox/scripts/rgi_backing_off.sh
 !/Tools/make_startup_rings.py
 !/Tools/prepare_repair_after_hybrid.py
+!/Toolbox/scripts/cluster_safe_bottom.sh
+!/Toolbox/scripts/cluster_safe_bottom_normal.sh
+!/Toolbox/scripts/cluster_safe_bottom_420.sh
+!/Toolbox/scripts/cluster_safe_bottom_400.sh
+!/Toolbox/scripts/cluster_safe_bottom_380.sh

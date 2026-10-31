@@ -60,7 +60,12 @@ Toolbox/scripts/rgi_verbose_off.sh
 Toolbox/scripts/repair_after_hybrid.sh
 Toolbox/scripts/rgi_backing.sh
 Toolbox/scripts/rgi_backing_on.sh
-Toolbox/scripts/rgi_backing_off.sh"
+Toolbox/scripts/rgi_backing_off.sh
+Toolbox/scripts/cluster_safe_bottom.sh
+Toolbox/scripts/cluster_safe_bottom_normal.sh
+Toolbox/scripts/cluster_safe_bottom_420.sh
+Toolbox/scripts/cluster_safe_bottom_400.sh
+Toolbox/scripts/cluster_safe_bottom_380.sh"
 NATIVE_FILES="$NATIVE/libcarplay_altscreen.so $NATIVE/carplay-alt111-mirror-display $NATIVE/carplay_hook-basevideo3.jar"
 NATIVE_WHAT=all
 if [ "${UPSTREAM_MIRROR:-0}" = 1 ]; then
