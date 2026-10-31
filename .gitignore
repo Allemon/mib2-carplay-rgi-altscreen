@@ -143,3 +143,29 @@
 *.rar
 *.7z
 *.mp4
+
+# MMI-Cockpit-Carplay fork (Allemon/mib2-carplay-rgi-altscreen): docs, SD base tree,
+# build/check scripts and the fork's GEM scripts. Generated output stays ignored (build/).
+!/README_UA.md
+!/README_CN.md
+!/sd_base/**
+!/scripts/*.sh
+!/scripts/*.py
+!/checks/*.sh
+!/checks/*.cpp
+!/Tools/h264_ring_analyze.py
+!/docker/*.Dockerfile
+!/Toolbox/carplay_alt_screen/mirror_display/src/cluster_shift.h
+!/Toolbox/scripts/cluster_area.sh
+!/Toolbox/scripts/cluster_area_full.sh
+!/Toolbox/scripts/cluster_area_w1200.sh
+!/Toolbox/scripts/cluster_area_w1140.sh
+!/Toolbox/scripts/cluster_area_w1080.sh
+!/Toolbox/scripts/cluster_shift.sh
+!/Toolbox/scripts/cluster_shift_off.sh
+!/Toolbox/scripts/cluster_shift_sporttest.sh
+!/Toolbox/scripts/dump_cluster_h264.sh
+!/Toolbox/scripts/rgi_verbose.sh
+!/Toolbox/scripts/rgi_verbose_on.sh
+!/Toolbox/scripts/rgi_verbose_off.sh
+!/assets/gallery/*

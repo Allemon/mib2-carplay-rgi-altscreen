@@ -3,6 +3,7 @@
 #include "startup_logo.h"
 #include "state_snapshot.h"
 #include "bounded_output.h"
+#include "cluster_shift.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -354,7 +355,30 @@ static bool state_kv_int(const char *line, const char *key, int *out) {
  * Card profiles (INSTALL WITH CARD / RGI CARD) widen only the FULL safeArea;
  * SMALL shows no card and keeps the same safeArea and OEM Sport pan as every
  * other profile, so placement does not depend on the card profile.
+ *
+ * MMI-Cockpit-Carplay fork: GEM "Cluster map shift" adds a per-view offset on
+ * top of the OEM stage (cluster_shift.h).
  */
+
+static const char *cluster_shift_path() {
+    return volatile_path("ALT111_CLUSTER_SHIFT_FILE",
+                         "/mnt/app/root/carplay-altscreen/state/cluster-shift.txt");
+}
+
+static ClusterShift load_user_map_shift() {
+    static bool reported = false;
+    static ClusterShift last;
+    const ClusterShift s = cluster_shift_load(cluster_shift_path());
+    if (!reported || s.full_dx != last.full_dx || s.small_dx != last.small_dx) {
+        fprintf(stderr,
+                "direct111: PHASE=USER_MAP_SHIFT full_dx=%d small_dx=%d "
+                "source=%s\n",
+                s.full_dx, s.small_dx, cluster_shift_path());
+        reported = true;
+        last = s;
+    }
+    return s;
+}
 
 static OemMapPlacement load_session_map_placement() {
     OemMapPlacement p;
@@ -390,8 +414,10 @@ static OemMapPlacement load_session_map_placement() {
         !strstr(p.layout, "LayoutMIB2HighQ7"))
         return p;
 
+    const ClusterShift shift = load_user_map_shift();
+
     if (strcmp(p.view, "FULL") == 0) {
-        p.dx = 0;
+        p.dx = shift.full_dx;
         p.dy = 0;
         p.recognized = true;
         return p;
@@ -404,6 +430,7 @@ static OemMapPlacement load_session_map_placement() {
         if (!have_dx) small_dx = -476;
         if (!have_dy) small_dy = 0;
     }
+    small_dx += shift.small_dx;
 
     /*
      * Require at least partial overlap with the 1440x455 viewport.  This keeps

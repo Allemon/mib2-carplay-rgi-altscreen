@@ -798,6 +798,43 @@ static cf_obj make_view_areas(uint32_t w, uint32_t h) {
 
 
 /*
+ * Optional view-area width (MMI-Cockpit-Carplay fork, GEM "Cluster map area").
+ *
+ * Apple and Google Maps centre the vehicle in the safeArea. Amap and Baidu
+ * ignore the safeArea and lay the map out against the viewArea, with the
+ * vehicle right of its centre. state/cluster-view-width.txt (cluster_area.sh)
+ * narrows the viewArea to <width> px from the left edge, which moves those
+ * apps back towards the middle; the safeAreas stay where they are (centred on
+ * x=720). Right of the viewArea the phone sends black. The phone reads the
+ * viewAreas from /info, so a new width applies on the next connection.
+ * No file, a malformed value or a width that would cut into a safeArea keeps
+ * the full canvas.
+ */
+static uint32_t alt_cluster_view_width(uint32_t canvas_w, uint32_t safe_right) {
+    char text[16];
+    char *end = NULL;
+    long width;
+    FILE *f = fopen(ALT_CARD_STATE_DIR "cluster-view-width.txt", "r");
+    if (!f) return canvas_w;
+    text[0] = 0;
+    if (!fgets(text, sizeof(text), f)) text[0] = 0;
+    fclose(f);
+    alt_trim_line(text);
+    width = strtol(text, &end, 10);
+    if (end == text || *end || width <= 0 || width >= (long)canvas_w) {
+        altscreen_log("ALTAREA_VIEW_WIDTH ignored value=%s canvas=%u reason=invalid",
+                      text, canvas_w);
+        return canvas_w;
+    }
+    if ((uint32_t)width < safe_right) {
+        altscreen_log("ALTAREA_VIEW_WIDTH ignored width=%u safe_right=%u reason=cuts_safe_area",
+                      (uint32_t)width, safe_right);
+        return canvas_w;
+    }
+    return (uint32_t)width;
+}
+
+/*
  * Type111 may declare multiple candidate viewAreas.  Apple cluster templates
  * do this as well; unlike type110, ALT entries do not carry
  * viewAreaTransitionControl/viewAreaStatusBarEdge flags. The outer viewArea
@@ -809,16 +846,27 @@ static cf_obj make_view_areas(uint32_t w, uint32_t h) {
  *
  * V3.5 preserves the V3.1/V3.2 horizontal OEM constraints while using the
  * vehicle-tuned vertical safe region top=72, bottom=450. Card profiles use the
- * Logo-tree layout (see alt_layout_rects).
+ * Logo-tree layout (see alt_layout_rects). On the measured canvas the fork's
+ * alt_cluster_view_width() may narrow the outer viewArea of both entries.
  */
 static cf_obj make_cluster_layout_view_areas(uint32_t w, uint32_t h,
                                              int enable_two_areas) {
     struct alt_safe_rect full, small;
     struct alt_layout_rects g = alt_layout_rects();
     cf_obj areas = NULL, v = NULL, safe = NULL;
+    uint32_t view_w = w;
 
     if (!cf_array_create_mutable || !cf_array_append || !cf_dict_set)
         return NULL;
+
+    if (enable_two_areas) {
+        uint32_t safe_right = g.full_x + g.full_w;
+        if (g.small_x + g.small_w > safe_right) safe_right = g.small_x + g.small_w;
+        view_w = alt_cluster_view_width(w, safe_right);
+        if (view_w != w)
+            altscreen_log("ALTAREA_VIEW_WIDTH applied view=0,0,%ux%u canvas=%ux%u safe_right=%u",
+                          view_w, h, w, h, safe_right);
+    }
 
     areas = cf_array_create_mutable(NULL, 0, NULL, NULL);
     if (!areas) return NULL;
@@ -828,9 +876,9 @@ static cf_obj make_cluster_layout_view_areas(uint32_t w, uint32_t h,
     full.y = 72u;
     full.w = g.full_w;
     full.h = 378u;
-    if (!full.h || !alt_safe_rect_valid(&full, w, h)) goto fail;
+    if (!full.h || !alt_safe_rect_valid(&full, view_w, h)) goto fail;
 
-    v = rect_dict(w, h, 0u, 0u);
+    v = rect_dict(view_w, h, 0u, 0u);
     safe = rect_dict(full.w, full.h, full.x, full.y);
     if (!v || !safe || !cf_dict_set_cstr_obj(v, "safeArea", safe)) goto fail;
     cf_release_safe(safe); safe = NULL;
@@ -844,9 +892,9 @@ static cf_obj make_cluster_layout_view_areas(uint32_t w, uint32_t h,
     small.y = 72u;
     small.w = g.small_w;
     small.h = 378u;
-    if (!small.h || !alt_safe_rect_valid(&small, w, h)) goto fail;
+    if (!small.h || !alt_safe_rect_valid(&small, view_w, h)) goto fail;
 
-    v = rect_dict(w, h, 0u, 0u);
+    v = rect_dict(view_w, h, 0u, 0u);
     safe = rect_dict(small.w, small.h, small.x, small.y);
     if (!v || !safe || !cf_dict_set_cstr_obj(v, "safeArea", safe)) goto fail;
     cf_release_safe(safe); safe = NULL;
