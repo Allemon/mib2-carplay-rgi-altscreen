@@ -47,6 +47,14 @@ script
    label   "CARD RIGHT"
 
 script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/card_small_keep.sh"
+   label   "Card in small view: keep (no map rebuild on VIEW)"
+
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/card_small_hide.sh"
+   label   "Card in small view: hide (V3.8)"
+
+script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_area_full.sh"
    label   "Cluster map area: full"
 

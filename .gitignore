@@ -183,3 +183,6 @@
 !/Toolbox/scripts/cluster_safe_bottom_420.sh
 !/Toolbox/scripts/cluster_safe_bottom_400.sh
 !/Toolbox/scripts/cluster_safe_bottom_380.sh
+!/Toolbox/scripts/card_small.sh
+!/Toolbox/scripts/card_small_keep.sh
+!/Toolbox/scripts/card_small_hide.sh

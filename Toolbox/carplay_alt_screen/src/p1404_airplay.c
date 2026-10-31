@@ -562,14 +562,29 @@ static int alt_phone_card_position(void) {
     return 2; /* top, and the default */
 }
 
+/*
+ * MMI-Cockpit-Carplay fork: keep the card context in the SMALL view too. V3.8 drops to the
+ * map-only context there, so every VIEW press sends the phone another showUI and it rebuilds
+ * the whole cluster UI (the map jumps, sometimes through a grey frame). Keeping the context
+ * leaves VIEW to updateViewArea alone; the phone fits the card into the SMALL safeArea itself.
+ * state/card-small-hide (GEM "Card in small view: hide") restores V3.8's switch.
+ */
+static int alt_phone_card_small_hidden(void) {
+    FILE *f = fopen(ALT_CARD_STATE_DIR "card-small-hide", "r");
+    if (!f) return 0;
+    fclose(f);
+    return 1;
+}
+
 int alt_phone_card_mode(void) {
     char view[16], layout[128];
     int dx, dy;
     if (!alt_phone_card_profile()) return 0;
     if (!alt_load_hmi_layout(view, sizeof(view), layout, sizeof(layout), &dx, &dy))
         return 0;
-    if (strcmp(view, "FULL") ||
-        (!strstr(layout, "LayoutMIB2HighB9") && !strstr(layout, "LayoutMIB2HighQ7")))
+    if (!strstr(layout, "LayoutMIB2HighB9") && !strstr(layout, "LayoutMIB2HighQ7"))
+        return 0;
+    if (strcmp(view, "FULL") && (strcmp(view, "SMALL") || alt_phone_card_small_hidden()))
         return 0;
     return alt_phone_card_position();
 }

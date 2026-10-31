@@ -62,6 +62,11 @@ run 0 "CLUSTER_SAFE_BOTTOM=normal bottom=450" "$S/cluster_safe_bottom_normal.sh"
 expect_file "$STATE/cluster-safe-bottom.txt" -
 run 2 "usage" "$S/cluster_safe_bottom.sh" 300
 
+run 0 "CARD_SMALL=hide applies=NEXT_VIEW" "$S/card_small_hide.sh"
+expect_file "$STATE/card-small-hide" hide
+run 0 "CARD_SMALL=keep applies=NEXT_VIEW" "$S/card_small_keep.sh"
+expect_file "$STATE/card-small-hide" -
+
 run 0 "RGI_BACKING=off applies=LIVE" "$S/rgi_backing_off.sh"
 expect_file "$STATE/rgi-backing-off" off
 run 0 "RGI_BACKING=on applies=LIVE" "$S/rgi_backing_on.sh"
