@@ -177,3 +177,4 @@
 !/Toolbox/scripts/rgi_backing_on.sh
 !/Toolbox/scripts/rgi_backing_off.sh
 !/Tools/make_startup_rings.py
+!/Tools/prepare_repair_after_hybrid.py

@@ -61,6 +61,7 @@ The code changes are small and marked "MMI-Cockpit-Carplay fork":
 | `Toolbox/scripts/cluster_area*.sh`, `cluster_shift*.sh`, `dump_cluster_h264.sh`, `rgi_verbose*.sh` | GEM scripts |
 | `Toolbox/GEM/mqb-carplayAltScreen.esd` | the menu entries above |
 | `Toolbox/scripts/altscreen_restore_apply.sh` | RESTORE removes the verbose-log marker |
+| `Toolbox/scripts/repair_after_hybrid.sh`, `Tools/prepare_repair_after_hybrid.py` | stock config back after the hybrid |
 | `Toolbox/carplay_alt_screen/hmi/src/com/luka/carplay/cluster/ClusterLayerController.java` | RGI backing under the arrow (switch file `state/rgi-backing-off`) |
 | `Toolbox/carplay_alt_screen/mirror_display/assets/logo_frames.z` | startup clip: four rings drawn on black (`Tools/make_startup_rings.py`), 3 s |
 
@@ -69,8 +70,10 @@ Not ported from the hybrid, because V3.8 does it itself: the cluster layout menu
 placement, steering-wheel zoom, the MU1003 Java variant, the stock touchpad, RESTORE skipping files
 that still match the backup.
 
-**Not yet tested in a car:** the cluster map area, the shift and the two rebuilt binaries. Treat the
-first card built from this fork as a test build.
+**Tested in a car** (Audi Q5 FY, `MHI2Q_ER_AUG22_P5092`, MU1329, 2026-10-31): installs with
+`INSTALL WITH RGI`, CarPlay map on the cluster, route arrow with its backing, the rings startup clip,
+and `REPAIR CONFIG AFTER HYBRID` on a unit left broken by the hybrid's RESTORE. Not yet checked in a
+car: the cluster map area and shift, the H.264 dump.
 
 ## Building the SD card
 
@@ -114,6 +117,27 @@ does not know those files and would refuse. So:
 2. Write the new card with `SD=... ./scripts/build_sd.sh` (it stops if the card still has the
    hybrid's `Toolbox/carplay_alt_screen/rgi/`; remove that folder after step 1). Keep `MMI-Cockpit-Carplay/`.
 3. `MQBCoding → Update Toolbox`, check that the menu shows `Version: V3.8 Fix1 + fork ...`, then INSTALL.
+
+If INSTALL stops at step 1 with *Stock backup does not match this head unit* and the log says
+`trusted original backup unavailable; project/legacy configuration remains`, or CarPlay does not start
+at all after the hybrid's RESTORE: the hybrid's "original" backup was taken over an earlier install,
+so its RESTORE wrote back a config that starts CarPlay through the hybrid's (now deleted)
+`/mnt/app/root/hooks/carplay_startup.sh`. Fix it with `REPAIR CONFIG AFTER HYBRID`:
+
+1. Find a backup from **before** the hybrid: `MMI-Cockpit-Carplay/backup/ORIGINAL/files/` of an older
+   card or a copy of it (an AltScreen-only install is fine).
+2. Prepare the repair files on the new card:
+
+   ```sh
+   python3 Tools/prepare_repair_after_hybrid.py \
+       --broken /Volumes/<hybrid card>/MMI-Cockpit-Carplay/backup/ORIGINAL/files \
+       --clean <older backup>/MMI-Cockpit-Carplay/backup/ORIGINAL/files \
+       --out /Volumes/<new card>/MMI-Cockpit-Carplay/repair-after-hybrid
+   ```
+
+3. In the car: `REPAIR CONFIG AFTER HYBRID` → `RESULT: SUCCESS` → reboot → check that stock CarPlay
+   works → INSTALL. It only acts when the head unit's files are exactly the expected broken state and
+   saves everything it changes to `repair-after-hybrid/before_<n>/` first.
 
 ## Licenses
 

@@ -61,6 +61,7 @@ Audi **MHI2Q** разом зі стрілками маршруту та смуг
 | `Toolbox/scripts/cluster_area*.sh`, `cluster_shift*.sh`, `dump_cluster_h264.sh`, `rgi_verbose*.sh` | скрипти GEM |
 | `Toolbox/GEM/mqb-carplayAltScreen.esd` | пункти меню вище |
 | `Toolbox/scripts/altscreen_restore_apply.sh` | RESTORE видаляє маркер детальних логів |
+| `Toolbox/scripts/repair_after_hybrid.sh`, `Tools/prepare_repair_after_hybrid.py` | повернення стокового конфігу після гібрида |
 | `Toolbox/carplay_alt_screen/hmi/src/com/luka/carplay/cluster/ClusterLayerController.java` | підкладка RGI під стрілкою (файл-перемикач `state/rgi-backing-off`) |
 | `Toolbox/carplay_alt_screen/mirror_display/assets/logo_frames.z` | заставка: чотири кільця на чорному (`Tools/make_startup_rings.py`), 3 с |
 
@@ -68,8 +69,10 @@ Audi **MHI2Q** разом зі стрілками маршруту та смуг
 а ETA перенесено в нижній рядок), бінарний патч 30 fps, розташування відео на Sport, зум коліщатком,
 Java-варіант для MU1003, стоковий тачпад, пропуск у RESTORE файлів, що збігаються з резервною копією.
 
-**Ще не перевірено в автомобілі:** область мапи, зсув і два перезібрані бінарники. Першу карту з
-цього форку вважайте тестовою.
+**Перевірено в автомобілі** (Audi Q5 FY, `MHI2Q_ER_AUG22_P5092`, MU1329, 31.10.2026): встановлення
+через `INSTALL WITH RGI`, мапа CarPlay на приладці, стрілка маршруту з підкладкою, заставка з кільцями
+та `REPAIR CONFIG AFTER HYBRID` на блоці, який зламав RESTORE гібрида. Ще не перевірено в автомобілі:
+область і зсув мапи, дамп H.264.
 
 ## Збирання SD-карти
 
@@ -113,6 +116,27 @@ SD=/Volumes/SDCARD ./scripts/build_sd.sh    # і записати на карт�
 2. Записати нову карту через `SD=... ./scripts/build_sd.sh` (скрипт зупиниться, якщо на карті ще є
    `Toolbox/carplay_alt_screen/rgi/` гібрида; видаліть цю теку після кроку 1). Теку `MMI-Cockpit-Carplay/` залишити.
 3. `MQBCoding → Update Toolbox`, переконатися, що меню показує `Version: V3.8 Fix1 + fork ...`, і виконати INSTALL.
+
+Якщо INSTALL зупиняється на кроці 1 з *Stock backup does not match this head unit*, а в лозі
+`trusted original backup unavailable; project/legacy configuration remains`, або CarPlay взагалі не
+стартує після RESTORE гібрида: «оригінальну» копію гібрида знято поверх попередньої установки, тож
+RESTORE повернув конфіг, який запускає CarPlay через уже видалений `/mnt/app/root/hooks/carplay_startup.sh`
+гібрида. Лікується пунктом `REPAIR CONFIG AFTER HYBRID`:
+
+1. Знайдіть копію, зняту **до** гібрида: `MMI-Cockpit-Carplay/backup/ORIGINAL/files/` зі старішої карти
+   або її копії (установка лише AltScreen підходить).
+2. Підготуйте файли на новій карті:
+
+   ```sh
+   python3 Tools/prepare_repair_after_hybrid.py \
+       --broken /Volumes/<карта гібрида>/MMI-Cockpit-Carplay/backup/ORIGINAL/files \
+       --clean <старіша копія>/MMI-Cockpit-Carplay/backup/ORIGINAL/files \
+       --out /Volumes/<нова карта>/MMI-Cockpit-Carplay/repair-after-hybrid
+   ```
+
+3. В авто: `REPAIR CONFIG AFTER HYBRID` → `RESULT: SUCCESS` → перезавантаження → перевірити, що стоковий
+   CarPlay працює → INSTALL. Скрипт діє лише тоді, коли файли на блоці точно в очікуваному зламаному
+   стані, і спершу зберігає все, що змінює, у `repair-after-hybrid/before_<n>/`.
 
 ## Ліцензії
 
