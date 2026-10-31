@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Render the fork's startup clip: four rings drawn on black while they settle from a slight
-zoom-in to their final size, one soft light sheen, hold.
+zoom-in to their final size, one soft light sheen, hold. Each ring is shaded as a round metal
+tube lit from the upper left (diffuse + a small specular highlight), so it reads as 3-D.
 
 Writes the map display's embedded clip format directly (see
 Toolbox/carplay_alt_screen/mirror_display/tools/build_startup_logo.py and src/startup_logo.cpp):
@@ -30,9 +31,11 @@ DRAW_START, DRAW_STAGGER, DRAW_TIME = 0.25, 0.15, 0.85
 SHEEN_START, SHEEN_TIME, SHEEN_WIDTH = 1.45, 0.75, 70.0
 ZOOM_FROM, ZOOM_TIME = 1.12, 2.4  # scale at t=0, eased down to 1.0 (no overshoot), then held
 
-# Brushed-silver vertical gradient (top light, bottom darker), linear RGB 0..1.
-TOP = np.array([0.93, 0.94, 0.95])
-BOTTOM = np.array([0.55, 0.57, 0.60])
+# Satin silver, lit from the upper left and slightly in front (screen y grows downwards).
+METAL = np.array([0.80, 0.82, 0.85])
+LIGHT = np.array([-0.45, -0.60, 0.66]); LIGHT = LIGHT / np.linalg.norm(LIGHT)
+HALF = LIGHT + np.array([0.0, 0.0, 1.0]); HALF = HALF / np.linalg.norm(HALF)
+AMBIENT, DIFFUSE, SPECULAR, SHININESS = 0.30, 0.75, 0.55, 28.0
 
 
 def ease_out_cubic(t):
@@ -66,6 +69,7 @@ def render():
         u = (bx - cx0) / scale + cx0                 # screen -> logo space
         v = (by - CENTER_Y) / scale + CENTER_Y
         alpha = np.zeros((bottom - top, right - left), dtype=np.float32)
+        colour = np.zeros(alpha.shape + (3,), dtype=np.float32)
         for i, cx in enumerate(centers):
             p = ease_out_cubic((t - DRAW_START - i * DRAW_STAGGER) / DRAW_TIME)
             if p <= 0.0:
@@ -78,17 +82,25 @@ def render():
                 # Arc position clockwise from 12 o'clock, in pixels along the centre line.
                 arc = np.mod(np.arctan2(dx, -dy), 2.0 * np.pi) * RADIUS
                 coverage = coverage * np.clip((p * circumference - arc) * scale / 1.5 + 0.5, 0.0, 1.0)
+            # Tube normal: across the stroke r runs -1..1, outward along the ring's radius.
+            r = np.clip((dist - RADIUS) / (STROKE / 2.0), -1.0, 1.0)
+            inv = 1.0 / np.maximum(dist, 1e-3)
+            normal = np.stack([r * dx * inv, r * dy * inv, np.sqrt(1.0 - r * r)], axis=-1)
+            diffuse = np.clip(normal @ LIGHT, 0.0, 1.0)
+            spec = np.clip(normal @ HALF, 0.0, 1.0) ** SHININESS
+            lit = METAL * (AMBIENT + DIFFUSE * diffuse)[..., None] + (SPECULAR * spec)[..., None]
+            # Interlocked like the badge: where two rings cross, the left one passes over in the
+            # upper half and under in the lower half (rings are added left to right).
+            take = np.where(v >= CENTER_Y, coverage >= alpha, coverage > alpha)
+            colour = np.where(take[..., None], lit, colour)
             alpha = np.maximum(alpha, coverage)
-        shade = np.clip((v - (CENTER_Y - RADIUS - STROKE)) / (2.0 * (RADIUS + STROKE)), 0.0, 1.0)
-        shade = np.broadcast_to(shade, alpha.shape)[..., None]
-        colour = TOP * (1.0 - shade) + BOTTOM * shade
         s = ease_in_out((t - SHEEN_START) / SHEEN_TIME)
         if 0.0 < s < 1.0:
             lo, hi = centers[0] - RADIUS - STROKE, centers[-1] + RADIUS + STROKE
             x0 = lo - SHEEN_WIDTH + s * (hi - lo + 2 * SHEEN_WIDTH)
             sheen = 0.55 * np.exp(-(((u - x0) - (v - CENTER_Y) * 0.35) / SHEEN_WIDTH) ** 2 * 4.0)
-            colour = np.clip(colour + sheen[..., None], 0.0, 1.0)
-        rgb = colour * alpha[..., None]
+            colour = colour + sheen[..., None]
+        rgb = np.clip(colour, 0.0, 1.0) * alpha[..., None]
         frame = np.zeros((HEIGHT, WIDTH, 4), dtype=np.uint8)
         frame[..., 3] = 255
         frame[top:bottom, left:right, :3] = np.round(rgb * 255.0).astype(np.uint8)
