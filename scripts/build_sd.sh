@@ -118,6 +118,12 @@ done
 chmod 755 "$OUT"/Toolbox/scripts/*.sh "$OUT/$BUILT_MIRROR" "$OUT/$ALT/rgi_renderer/release/maneuver_render" \
           "$OUT"/$ALT/mirror_display/release/*.sh
 
+# The map display must carry this repo's startup clip (a stale build/native would not).
+if [ "${UPSTREAM_MIRROR:-0}" != 1 ]; then
+    python3 "$PROJECT_DIR/Tools/verify_embedded_logo.py" "$OUT/$BUILT_MIRROR" \
+        --asset "$PROJECT_DIR/$ALT/mirror_display/assets/logo_frames.z" >/dev/null \
+        || { echo "ERROR: the map display does not embed assets/logo_frames.z - rebuild it"; exit 1; }
+fi
 # Keep the informational checksums next to the rebuilt binaries true to what ships.
 MIRROR_SUMS="$OUT/$ALT/mirror_display/release/SHA256SUMS"
 mirror_sum=$(sha_of "$OUT/$BUILT_MIRROR")

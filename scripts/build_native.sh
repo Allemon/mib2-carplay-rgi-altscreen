@@ -25,6 +25,7 @@ QNX_IMG=${QNX_IMG:-qnx65-armv7-toolchain:latest}
 what=${1:-all}
 case "$what" in all|hook|mirror) ;; *) echo "usage: ./scripts/build_native.sh [hook|mirror]"; exit 2 ;; esac
 mkdir -p "$OUT"
+docker info >/dev/null 2>&1 || { echo "ERROR: Docker is not running (start Docker Desktop)"; exit 1; }
 
 build_hook() {
     if ! docker image inspect "$HOOK_IMG" >/dev/null 2>&1; then
