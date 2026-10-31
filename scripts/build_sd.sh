@@ -15,10 +15,11 @@
 #          Toolbox/ (this repo)     the overlay: scripts, GEM menu, licenses, BUILD_INFO, ...
 #          SHA256SUMS-SD.txt        upstream's overlay list; also pins the binaries below
 #          build/native/            libcarplay_altscreen.so, carplay-alt111-mirror-display
-#                                   (scripts/build_native.sh)
-#          V3.8Fix1.zip (release)   the HMI JAR, libcarplay_rgi_meta.so and maneuver_render,
-#                                   which the fork does not change; each is checked against
-#                                   its pinned hash before it is used
+#                                   (scripts/build_native.sh), carplay_hook-basevideo3.jar
+#                                   (scripts/build_hmi_jar.sh: the release JAR with the fork's
+#                                   changed classes; needs your stock HMI jar, STOCK_JAR=)
+#          V3.8Fix1.zip (release)   libcarplay_rgi_meta.so and maneuver_render, which the fork
+#                                   does not change; each is checked against its pinned hash
 # Output:  build/sd/                copy its contents onto the SD root
 #
 # The card's MMI-Cockpit-Carplay/ (stock backups, logs, state) is never part of the output and
@@ -39,8 +40,9 @@ ALT=Toolbox/carplay_alt_screen
 # Built here from this repo's sources.
 BUILT_HOOK=$ALT/universal/libcarplay_altscreen.so
 BUILT_MIRROR=$ALT/mirror_display/release/carplay-alt111-mirror-display
+BUILT_JAR=$ALT/hmi/carplay_hook-basevideo3.jar
 # Unchanged upstream binaries, taken from the release.
-FROM_RELEASE="$ALT/hmi/carplay_hook-basevideo3.jar $ALT/rgi_meta/libcarplay_rgi_meta.so $ALT/rgi_renderer/release/maneuver_render"
+FROM_RELEASE="$ALT/rgi_meta/libcarplay_rgi_meta.so $ALT/rgi_renderer/release/maneuver_render"
 # Files the fork adds to upstream's overlay list.
 FORK_FILES="
 Toolbox/scripts/cluster_area.sh
@@ -55,12 +57,15 @@ Toolbox/scripts/dump_cluster_h264.sh
 Toolbox/scripts/rgi_verbose.sh
 Toolbox/scripts/rgi_verbose_on.sh
 Toolbox/scripts/rgi_verbose_off.sh
-Toolbox/scripts/repair_after_hybrid.sh"
-NATIVE_FILES="$NATIVE/libcarplay_altscreen.so $NATIVE/carplay-alt111-mirror-display"
+Toolbox/scripts/repair_after_hybrid.sh
+Toolbox/scripts/rgi_backing.sh
+Toolbox/scripts/rgi_backing_on.sh
+Toolbox/scripts/rgi_backing_off.sh"
+NATIVE_FILES="$NATIVE/libcarplay_altscreen.so $NATIVE/carplay-alt111-mirror-display $NATIVE/carplay_hook-basevideo3.jar"
 NATIVE_WHAT=all
 if [ "${UPSTREAM_MIRROR:-0}" = 1 ]; then
     FROM_RELEASE="$FROM_RELEASE $BUILT_MIRROR"
-    NATIVE_FILES="$NATIVE/libcarplay_altscreen.so"
+    NATIVE_FILES="$NATIVE/libcarplay_altscreen.so $NATIVE/carplay_hook-basevideo3.jar"
     NATIVE_WHAT=hook
     echo "WARN: UPSTREAM_MIRROR=1 - the card gets upstream's map display; 'Cluster map shift' does nothing on it."
 fi
@@ -71,13 +76,6 @@ pinned() { awk -v p="$1" '$2 == p { print $1 }' "$SUMS"; }
 
 [ -d "$PROJECT_DIR/sd_base/Toolbox" ] || { echo "ERROR: sd_base/ is not an SD tree"; exit 1; }
 
-if [ "${SKIP_BUILD:-0}" != 1 ]; then
-    bash "$PROJECT_DIR/scripts/build_native.sh" "$NATIVE_WHAT"
-fi
-for f in $NATIVE_FILES; do
-    [ -s "$f" ] || { echo "ERROR: missing $f - run ./scripts/build_native.sh"; exit 1; }
-done
-
 # The release card, for the binaries the fork does not change.
 ZIP=${RELEASE_ZIP:-$CACHE/V3.8Fix1.zip}
 if [ ! -f "$ZIP" ]; then
@@ -86,6 +84,14 @@ if [ ! -f "$ZIP" ]; then
     curl -fL --retry 3 -o "$ZIP.part" "$RELEASE_URL" && mv -f "$ZIP.part" "$ZIP"
 fi
 [ "$(sha_of "$ZIP")" = "$RELEASE_SHA256" ] || { echo "ERROR: $ZIP is not the V3.8 Fix1 release (sha256)"; exit 1; }
+
+if [ "${SKIP_BUILD:-0}" != 1 ]; then
+    bash "$PROJECT_DIR/scripts/build_native.sh" "$NATIVE_WHAT"
+    RELEASE_ZIP="$ZIP" bash "$PROJECT_DIR/scripts/build_hmi_jar.sh"
+fi
+for f in $NATIVE_FILES; do
+    [ -s "$f" ] || { echo "ERROR: missing $f - run ./scripts/build_native.sh / build_hmi_jar.sh"; exit 1; }
+done
 REL="$CACHE/release"
 rm -rf "$REL"; mkdir -p "$REL"
 for f in $FROM_RELEASE; do
@@ -104,6 +110,7 @@ for f in $overlay; do
     case "$f" in
         "$BUILT_HOOK") cp "$NATIVE/libcarplay_altscreen.so" "$OUT/$f" ;;
         "$BUILT_MIRROR") cp "$NATIVE/carplay-alt111-mirror-display" "$OUT/$f" ;;
+        "$BUILT_JAR") cp "$NATIVE/carplay_hook-basevideo3.jar" "$OUT/$f" ;;
         *) [ -f "$PROJECT_DIR/$f" ] || { echo "ERROR: overlay file missing in the repo: $f"; exit 1; }
            cp "$PROJECT_DIR/$f" "$OUT/$f" ;;
     esac
@@ -123,10 +130,15 @@ HMI_INFO="$OUT/$ALT/hmi/BUILD_INFO.txt"
 grep -q '^universal_runtime_sha256=' "$HMI_INFO" || { echo "ERROR: $HMI_INFO lost universal_runtime_sha256"; exit 1; }
 sed -e "s/^universal_runtime_sha256=.*/universal_runtime_sha256=$hook_sum/" "$HMI_INFO" > "$HMI_INFO.tmp"
 mv -f "$HMI_INFO.tmp" "$HMI_INFO"
-# The installer pins the JAR by the size/cksum in BUILD_INFO.txt; the JAR is upstream's.
-set -- $(cksum < "$OUT/$ALT/hmi/carplay_hook-basevideo3.jar")
-grep -qx "jar_cksum=$1" "$HMI_INFO" && grep -qx "jar_size=$2" "$HMI_INFO" \
-    || { echo "ERROR: HMI JAR does not match the size/cksum in BUILD_INFO.txt"; exit 1; }
+# The installer pins the JAR by the size/cksum in BUILD_INFO.txt: pin the one that ships.
+set -- $(cksum < "$OUT/$BUILT_JAR")
+JAR_CKSUM=$1 JAR_SIZE=$2 JAR_SHA=$(sha_of "$OUT/$BUILT_JAR")
+for key in jar_size jar_cksum jar_sha256; do
+    [ "$(grep -c "^$key=" "$HMI_INFO")" = 1 ] || { echo "ERROR: $HMI_INFO needs exactly one $key="; exit 1; }
+done
+sed -e "s/^jar_size=.*/jar_size=$JAR_SIZE/" -e "s/^jar_cksum=.*/jar_cksum=$JAR_CKSUM/" \
+    -e "s/^jar_sha256=.*/jar_sha256=$JAR_SHA/" "$HMI_INFO" > "$HMI_INFO.tmp"
+mv -f "$HMI_INFO.tmp" "$HMI_INFO"
 
 # Everything the head unit runs must parse as sh (QNX /bin/sh is pdksh).
 for f in "$OUT"/Toolbox/scripts/*.sh "$OUT"/$ALT/mirror_display/release/*.sh; do
@@ -145,6 +157,7 @@ done
 
 echo "  hook:   $BUILT_HOOK sha256=$hook_sum"
 echo "  mirror: $BUILT_MIRROR sha256=$mirror_sum"
+echo "  jar:    $BUILT_JAR size=$JAR_SIZE cksum=$JAR_CKSUM"
 echo "  from release: $(echo $FROM_RELEASE | wc -w | tr -d ' ') binaries, pinned"
 echo "  sums:   SHA256SUMS-SD.txt ($(wc -l < "$OUT/SHA256SUMS-SD.txt" | tr -d ' ') files, verified)"
 

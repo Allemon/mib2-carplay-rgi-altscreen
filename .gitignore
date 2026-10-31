@@ -173,3 +173,7 @@
 # Local checkout of the QNX toolchain (scripts/build_native.sh only needs its Docker image).
 /qnx65-armv7-toolchain/
 !/Toolbox/scripts/repair_after_hybrid.sh
+!/Toolbox/scripts/rgi_backing.sh
+!/Toolbox/scripts/rgi_backing_on.sh
+!/Toolbox/scripts/rgi_backing_off.sh
+!/Tools/make_startup_rings.py

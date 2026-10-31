@@ -45,6 +45,8 @@ Audi **MHI2Q** разом зі стрілками маршруту та смуг
 | `Cluster map shift: off / Sport test` | Зсуває мапу на приладці на фіксовану величину понад стокове розташування. *Sport test* ставить вид SMALL (кнопка VIEW) на автомобілі з Classic туди, де він у Sport (−476 px). На Sport це вже робить стокова розкладка. | одразу |
 | `Dump cluster video to SD (diagnostic)` | Копіює останні кілька МБ отриманого H.264-потоку приладки в `MMI-Cockpit-Carplay/logs/h264/`. Аналіз: `python3 Tools/h264_ring_analyze.py <файл>`. | – |
 | `Verbose Java logs: on / off` | Створює або видаляє `/mnt/app/carplay_verbose`: Java HMI пише також INFO (нативні хуки вже роблять це, поки встановлені). RESTORE ORIGINAL його видаляє. | з наступним підключенням телефону |
+| `RGI backing: on / off` | *On* (типово): під стрілкою маршруту темна стокова панель KDK, що з'являється і гасне разом зі стрілкою, як до V3.8 Fix1, тож мапа не просвічує крізь панель маневру. *Off*: стрілка просто поверх мапи (V3.8 Fix1). | за 2 с |
+| `REPAIR CONFIG AFTER HYBRID` | Одноразово: повертає стокові `smartphone_integrator.json` / `dio_manager.json` з файлів, підготовлених на SD (`MMI-Cockpit-Carplay/repair-after-hybrid/`), лише з очікуваного зламаного стану і спершу все зберігши. Для блоку, де RESTORE гібрида залишив конфіг, з яким CarPlay не стартує. | після перезавантаження |
 
 Область і зсув зберігаються у встановленому runtime (`/mnt/app/root/carplay-altscreen/state/`), тому
 новий INSTALL їх скидає, як і положення картки. Хук пише в лог `ALTAREA_VIEW_WIDTH`, дисплей мапи —
@@ -59,6 +61,8 @@ Audi **MHI2Q** разом зі стрілками маршруту та смуг
 | `Toolbox/scripts/cluster_area*.sh`, `cluster_shift*.sh`, `dump_cluster_h264.sh`, `rgi_verbose*.sh` | скрипти GEM |
 | `Toolbox/GEM/mqb-carplayAltScreen.esd` | пункти меню вище |
 | `Toolbox/scripts/altscreen_restore_apply.sh` | RESTORE видаляє маркер детальних логів |
+| `Toolbox/carplay_alt_screen/hmi/src/com/luka/carplay/cluster/ClusterLayerController.java` | підкладка RGI під стрілкою (файл-перемикач `state/rgi-backing-off`) |
+| `Toolbox/carplay_alt_screen/mirror_display/assets/logo_frames.z` | заставка: чотири кільця на чорному (`Tools/make_startup_rings.py`), 3 с |
 
 З гібрида не перенесено, бо V3.8 робить це сама: меню розкладки мапи (у V3.8 є `CARD LEFT/TOP/RIGHT`,
 а ETA перенесено в нижній рядок), бінарний патч 30 fps, розташування відео на Sport, зум коліщатком,
@@ -69,13 +73,15 @@ Java-варіант для MU1003, стоковий тачпад, пропуск
 
 ## Збирання SD-карти
 
-Потрібен Docker. Форк перезбирає лише два бінарники, які змінює; HMI JAR, `libcarplay_rgi_meta.so` і
-`maneuver_render` беруться з релізу V3.8 Fix1 апстріму, кожен перевіряється за `SHA256SUMS-SD.txt`.
+Потрібен Docker і стоковий HMI jar вашого блоку (для JAR). Форк перезбирає лише три бінарники, які
+змінює; `libcarplay_rgi_meta.so` і `maneuver_render` беруться з релізу V3.8 Fix1 апстріму, кожен
+перевіряється за `SHA256SUMS-SD.txt`.
 
 | Бінарник | Тулчейн |
 |---|---|
 | `libcarplay_altscreen.so` | Debian clang/LLD 19.1.7 в образі з `docker/hook.Dockerfile` (автоматично). Незмінені джерела апстріму дають ним побайтно ту саму бібліотеку, що в релізі. |
 | `carplay-alt111-mirror-display` | QNX 6.5 SDP + GCC 8.5, образ `qnx65-armv7-toolchain` з [luka-dev/qnx65-armv7-toolchain](https://github.com/luka-dev/qnx65-armv7-toolchain), збирається один раз. Джерела апстріму, зібрані ним, проходять перевірки маркерів апстріму й підключають ті самі бібліотеки, але побайтно не збігаються з релізом: апстрім використав іншу збірку GCC 8.5, наша підтягує допоміжні функції libgcc з цього образу (+316 байт коду). |
+| `carplay_hook-basevideo3.jar` | `scripts/build_hmi_jar.sh`: javac 1.8 в `eclipse-temurin:8`, проти релізного JAR апстріму та вашого стокового HMI jar (`STOCK_JAR=`, типово `~/Tools/jxe2jar/out/MU1329-base.jar`). Спершу компілює версію апстріму кожного зміненого класу й вимагає байтів релізного JAR, потім замінює лише ці класи. |
 
 ```sh
 git clone https://github.com/luka-dev/qnx65-armv7-toolchain

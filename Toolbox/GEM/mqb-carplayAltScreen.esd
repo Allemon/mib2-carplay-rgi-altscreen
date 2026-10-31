@@ -5,7 +5,7 @@ screen "MMI-Cockpit-Carplay" Customization
 
 keyValue
     value   String sys 0x00000000 0
-    label   "Version: V3.8 Fix1 + fork (map area/shift, H.264 dump, Java logs)"
+    label   "Version: V3.8 Fix1 + fork (RGI backing, map area/shift, logo, H.264 dump, Java logs)"
     poll    0
 
 keyValue
@@ -69,6 +69,14 @@ script
 script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_shift_sporttest.sh"
    label   "Cluster map shift: Sport test (Classic car)"
+
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/rgi_backing_on.sh"
+   label   "RGI backing: on (dark panel under the arrow)"
+
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/rgi_backing_off.sh"
+   label   "RGI backing: off (arrow on the map, V3.8)"
 
 script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/dump_cluster_h264.sh"

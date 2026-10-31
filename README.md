@@ -45,6 +45,8 @@ Green menu → `Customization` → `MMI-Cockpit-Carplay`, below upstream's entri
 | `Cluster map shift: off / Sport test` | Moves the map on the cluster by a fixed offset on top of the stock placement. *Sport test* puts the SMALL view (VIEW button) of a Classic car where Sport has it (−476 px). Sport cars already get that from the stock layout. | right away |
 | `Dump cluster video to SD (diagnostic)` | Copies the last few MB of the received cluster H.264 stream to `MMI-Cockpit-Carplay/logs/h264/`. Analyse it with `python3 Tools/h264_ring_analyze.py <file>`. | – |
 | `Verbose Java logs: on / off` | Creates or removes `/mnt/app/carplay_verbose`: the Java HMI also logs INFO (the native hooks already do while installed). RESTORE ORIGINAL removes it. | next phone connection |
+| `RGI backing: on / off` | *On* (default): the dark stock KDK panel sits under the route arrow and fades with it, as before V3.8 Fix1, so the map does not show through the maneuver panel. *Off*: the arrow sits directly on the map (V3.8 Fix1). | within 2 s |
+| `REPAIR CONFIG AFTER HYBRID` | One-off: puts `smartphone_integrator.json` / `dio_manager.json` back to stock from files prepared on the SD (`MMI-Cockpit-Carplay/repair-after-hybrid/`), only from the expected broken state, saving everything first. For a unit where the hybrid's RESTORE left a config that no longer starts CarPlay. | after a reboot |
 
 Area and shift live in the installed runtime (`/mnt/app/root/carplay-altscreen/state/`), so a new INSTALL
 resets them, as it does the card position. The hook logs `ALTAREA_VIEW_WIDTH`, the map display logs
@@ -59,6 +61,8 @@ The code changes are small and marked "MMI-Cockpit-Carplay fork":
 | `Toolbox/scripts/cluster_area*.sh`, `cluster_shift*.sh`, `dump_cluster_h264.sh`, `rgi_verbose*.sh` | GEM scripts |
 | `Toolbox/GEM/mqb-carplayAltScreen.esd` | the menu entries above |
 | `Toolbox/scripts/altscreen_restore_apply.sh` | RESTORE removes the verbose-log marker |
+| `Toolbox/carplay_alt_screen/hmi/src/com/luka/carplay/cluster/ClusterLayerController.java` | RGI backing under the arrow (switch file `state/rgi-backing-off`) |
+| `Toolbox/carplay_alt_screen/mirror_display/assets/logo_frames.z` | startup clip: four rings drawn on black (`Tools/make_startup_rings.py`), 3 s |
 
 Not ported from the hybrid, because V3.8 does it itself: the cluster layout menu (V3.8 has
 `CARD LEFT/TOP/RIGHT` and moved the ETA to the info bar), the 30 fps binary patch, the Sport video
@@ -70,14 +74,15 @@ first card built from this fork as a test build.
 
 ## Building the SD card
 
-Needs Docker. The fork rebuilds only the two binaries it changes; the HMI JAR, `libcarplay_rgi_meta.so`
-and `maneuver_render` come from upstream's V3.8 Fix1 release, each checked against
-`SHA256SUMS-SD.txt` before use.
+Needs Docker and your unit's stock HMI jar (for the JAR). The fork rebuilds only the three
+binaries it changes; `libcarplay_rgi_meta.so` and `maneuver_render` come from upstream's V3.8 Fix1
+release, each checked against `SHA256SUMS-SD.txt` before use.
 
 | Binary | Toolchain |
 |---|---|
 | `libcarplay_altscreen.so` | Debian clang/LLD 19.1.7 in an image built from `docker/hook.Dockerfile` (automatic). Upstream's unmodified sources built with it give the release library byte for byte. |
 | `carplay-alt111-mirror-display` | QNX 6.5 SDP + GCC 8.5, image `qnx65-armv7-toolchain` from [luka-dev/qnx65-armv7-toolchain](https://github.com/luka-dev/qnx65-armv7-toolchain), built once. Upstream's sources built with it pass upstream's marker checks and link the same libraries, but are not byte-identical to the release: upstream used another GCC 8.5 build, ours links that image's libgcc helpers (+316 bytes of code). |
+| `carplay_hook-basevideo3.jar` | `scripts/build_hmi_jar.sh`: javac 1.8 in `eclipse-temurin:8`, against upstream's release JAR and your own stock HMI jar (`STOCK_JAR=`, default `~/Tools/jxe2jar/out/MU1329-base.jar`). It first compiles upstream's version of each changed class and requires the release JAR's bytes, then replaces only those classes. |
 
 ```sh
 git clone https://github.com/luka-dev/qnx65-armv7-toolchain
