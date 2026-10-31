@@ -62,7 +62,7 @@ build_mirror() {
     ' > "$OUT/mirror.log" 2>&1 || { tail -n 40 "$OUT/mirror.log"; echo "ERROR: mirror build failed ($OUT/mirror.log)"; exit 1; }
     grep -q '^MIRROR_BUILD=PASS' "$OUT/mirror.log" \
         || { echo "ERROR: mirror marker checks not confirmed ($OUT/mirror.log)"; exit 1; }
-    cp"$PROJECT_DIR/Toolbox/carplay_alt_screen/mirror_display/build/carplay-alt111-mirror-display" \
+    cp "$PROJECT_DIR/Toolbox/carplay_alt_screen/mirror_display/build/carplay-alt111-mirror-display" \
        "$OUT/carplay-alt111-mirror-display"
     echo "  $OUT/carplay-alt111-mirror-display"
 }
