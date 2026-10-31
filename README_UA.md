@@ -45,6 +45,8 @@ Audi **MHI2Q** разом зі стрілками маршруту та смуг
 | `Cluster map shift: off / Sport test` | Зсуває мапу на приладці на фіксовану величину понад стокове розташування. *Sport test* ставить вид SMALL (кнопка VIEW) на автомобілі з Classic туди, де він у Sport (−476 px). На Sport це вже робить стокова розкладка. | одразу |
 | `Dump cluster video to SD (diagnostic)` | Копіює останні кілька МБ отриманого H.264-потоку приладки в `MMI-Cockpit-Carplay/logs/h264/`. Аналіз: `python3 Tools/h264_ring_analyze.py <файл>`. | – |
 | `Verbose Java logs: on / off` | Створює або видаляє `/mnt/app/carplay_verbose`: Java HMI пише також INFO (нативні хуки вже роблять це, поки встановлені). RESTORE ORIGINAL його видаляє. | з наступним підключенням телефону |
+| `Map bottom edge: normal / 420 / 400 / 380` | Піднімає нижній край safe area приладки з y=450 (V3.8). Google Maps і Waze ставлять автомобіль трохи вище цього краю, тож він піднімається над стоковим нижнім рядком (назва вулиці \| час прибуття). | з наступним підключенням телефону |
+| `Card in small view: keep / hide` | Для `INSTALL WITH ... CARD`. *Keep* (типово): екран з карткою телефону лишається і в малому виді, тож VIEW лише змінює область малювання, і мапа більше не перебудовується (стрибки, сірий кадр) на кожне натискання. *Hide*: як у V3.8, у малому виді екран лише з мапою. | з наступним натисканням VIEW |
 | `RGI backing: on / off` | *On* (типово): під стрілкою маршруту темна стокова панель KDK, що з'являється і гасне разом зі стрілкою, як до V3.8 Fix1, тож мапа не просвічує крізь панель маневру. *Off*: стрілка просто поверх мапи (V3.8 Fix1). | за 2 с |
 | `REPAIR CONFIG AFTER HYBRID` | Одноразово: повертає стокові `smartphone_integrator.json` / `dio_manager.json` з файлів, підготовлених на SD (`MMI-Cockpit-Carplay/repair-after-hybrid/`), лише з очікуваного зламаного стану і спершу все зберігши. Для блоку, де RESTORE гібрида залишив конфіг, з яким CarPlay не стартує. | після перезавантаження |
 
@@ -56,23 +58,24 @@ Audi **MHI2Q** разом зі стрілками маршруту та смуг
 
 | Файл | Зміна |
 |---|---|
-| `Toolbox/carplay_alt_screen/src/p1404_airplay.c` | `alt_cluster_view_width()`: необов'язкова ширина view area |
+| `Toolbox/carplay_alt_screen/src/p1404_airplay.c` | `alt_cluster_view_width()`: необов'язкова ширина view area; `alt_safe_height()`: необов'язковий нижній край safe area; `alt_phone_card_mode()`: картка лишається в малому виді |
 | `Toolbox/carplay_alt_screen/mirror_display/src/cluster_shift.h`, `main.cpp` | зсув для кожного виду |
 | `Toolbox/scripts/cluster_area*.sh`, `cluster_shift*.sh`, `dump_cluster_h264.sh`, `rgi_verbose*.sh` | скрипти GEM |
 | `Toolbox/GEM/mqb-carplayAltScreen.esd` | пункти меню вище |
 | `Toolbox/scripts/altscreen_restore_apply.sh` | RESTORE видаляє маркер детальних логів |
 | `Toolbox/scripts/repair_after_hybrid.sh`, `Tools/prepare_repair_after_hybrid.py` | повернення стокового конфігу після гібрида |
 | `Toolbox/carplay_alt_screen/hmi/src/com/luka/carplay/cluster/ClusterLayerController.java` | підкладка RGI під стрілкою (файл-перемикач `state/rgi-backing-off`) |
-| `Toolbox/carplay_alt_screen/mirror_display/assets/logo_frames.z` | заставка: чотири кільця на чорному (`Tools/make_startup_rings.py`), 3 с |
+| `Toolbox/carplay_alt_screen/mirror_display/assets/logo_frames.z` | заставка (`Tools/make_startup_rings.py`, 3,2 с): дуги обертаються навколо чотирьох кілець у протилежні боки й виростають у кільця під час віддалення, зі шлейфами та білим сяйвом, що осідає до м'якого ореолу |
 
 З гібрида не перенесено, бо V3.8 робить це сама: меню розкладки мапи (у V3.8 є `CARD LEFT/TOP/RIGHT`,
 а ETA перенесено в нижній рядок), бінарний патч 30 fps, розташування відео на Sport, зум коліщатком,
 Java-варіант для MU1003, стоковий тачпад, пропуск у RESTORE файлів, що збігаються з резервною копією.
 
 **Перевірено в автомобілі** (Audi Q5 FY, `MHI2Q_ER_AUG22_P5092`, MU1329, 31.10.2026): встановлення
-через `INSTALL WITH RGI`, мапа CarPlay на приладці, стрілка маршруту з підкладкою, заставка з кільцями
-та `REPAIR CONFIG AFTER HYBRID` на блоці, який зламав RESTORE гібрида. Ще не перевірено в автомобілі:
-область і зсув мапи, дамп H.264.
+через `INSTALL WITH RGI` і `INSTALL WITH RGI CARD`, мапа CarPlay на приладці, стрілка маршруту з
+підкладкою, заставка з кільцями, нижній край мапи, картка в малому виді (VIEW більше не перебудовує
+мапу) та `REPAIR CONFIG AFTER HYBRID` на блоці, який зламав RESTORE гібрида. Ще не перевірено в
+автомобілі: область і зсув мапи, дамп H.264.
 
 ## Збирання SD-карти
 

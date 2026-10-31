@@ -45,6 +45,8 @@ Green menu → `Customization` → `MMI-Cockpit-Carplay`, below upstream's entri
 | `Cluster map shift: off / Sport test` | Moves the map on the cluster by a fixed offset on top of the stock placement. *Sport test* puts the SMALL view (VIEW button) of a Classic car where Sport has it (−476 px). Sport cars already get that from the stock layout. | right away |
 | `Dump cluster video to SD (diagnostic)` | Copies the last few MB of the received cluster H.264 stream to `MMI-Cockpit-Carplay/logs/h264/`. Analyse it with `python3 Tools/h264_ring_analyze.py <file>`. | – |
 | `Verbose Java logs: on / off` | Creates or removes `/mnt/app/carplay_verbose`: the Java HMI also logs INFO (the native hooks already do while installed). RESTORE ORIGINAL removes it. | next phone connection |
+| `Map bottom edge: normal / 420 / 400 / 380` | Moves the bottom edge of the cluster safe area up from V3.8's y=450. Google Maps and Waze put the vehicle just above that edge, so it moves up and clears the stock lower info bar (road name \| arrival time). | next phone connection |
+| `Card in small view: keep / hide` | With `INSTALL WITH ... CARD`. *Keep* (default): the phone's card screen stays in the SMALL view too, so VIEW only resizes the drawing area and the map no longer rebuilds (jumps, grey frame) on every press. *Hide*: V3.8 behaviour, map-only screen in SMALL. | next VIEW press |
 | `RGI backing: on / off` | *On* (default): the dark stock KDK panel sits under the route arrow and fades with it, as before V3.8 Fix1, so the map does not show through the maneuver panel. *Off*: the arrow sits directly on the map (V3.8 Fix1). | within 2 s |
 | `REPAIR CONFIG AFTER HYBRID` | One-off: puts `smartphone_integrator.json` / `dio_manager.json` back to stock from files prepared on the SD (`MMI-Cockpit-Carplay/repair-after-hybrid/`), only from the expected broken state, saving everything first. For a unit where the hybrid's RESTORE left a config that no longer starts CarPlay. | after a reboot |
 
@@ -56,14 +58,14 @@ The code changes are small and marked "MMI-Cockpit-Carplay fork":
 
 | File | Change |
 |---|---|
-| `Toolbox/carplay_alt_screen/src/p1404_airplay.c` | `alt_cluster_view_width()`: optional view-area width |
+| `Toolbox/carplay_alt_screen/src/p1404_airplay.c` | `alt_cluster_view_width()`: optional view-area width; `alt_safe_height()`: optional safe-area bottom; `alt_phone_card_mode()`: card kept in SMALL |
 | `Toolbox/carplay_alt_screen/mirror_display/src/cluster_shift.h`, `main.cpp` | per-view user offset |
 | `Toolbox/scripts/cluster_area*.sh`, `cluster_shift*.sh`, `dump_cluster_h264.sh`, `rgi_verbose*.sh` | GEM scripts |
 | `Toolbox/GEM/mqb-carplayAltScreen.esd` | the menu entries above |
 | `Toolbox/scripts/altscreen_restore_apply.sh` | RESTORE removes the verbose-log marker |
 | `Toolbox/scripts/repair_after_hybrid.sh`, `Tools/prepare_repair_after_hybrid.py` | stock config back after the hybrid |
 | `Toolbox/carplay_alt_screen/hmi/src/com/luka/carplay/cluster/ClusterLayerController.java` | RGI backing under the arrow (switch file `state/rgi-backing-off`) |
-| `Toolbox/carplay_alt_screen/mirror_display/assets/logo_frames.z` | startup clip: four rings drawn on black (`Tools/make_startup_rings.py`), 3 s |
+| `Toolbox/carplay_alt_screen/mirror_display/assets/logo_frames.z` | startup clip (`Tools/make_startup_rings.py`, 3.2 s): arc pieces spin around the four rings in alternating directions and grow into them under a zoom-out, with trailing lines and a white bloom that settles to a soft halo |
 
 Not ported from the hybrid, because V3.8 does it itself: the cluster layout menu (V3.8 has
 `CARD LEFT/TOP/RIGHT` and moved the ETA to the info bar), the 30 fps binary patch, the Sport video
@@ -71,9 +73,10 @@ placement, steering-wheel zoom, the MU1003 Java variant, the stock touchpad, RES
 that still match the backup.
 
 **Tested in a car** (Audi Q5 FY, `MHI2Q_ER_AUG22_P5092`, MU1329, 2026-10-31): installs with
-`INSTALL WITH RGI`, CarPlay map on the cluster, route arrow with its backing, the rings startup clip,
-and `REPAIR CONFIG AFTER HYBRID` on a unit left broken by the hybrid's RESTORE. Not yet checked in a
-car: the cluster map area and shift, the H.264 dump.
+`INSTALL WITH RGI` and `INSTALL WITH RGI CARD`, CarPlay map on the cluster, route arrow with its
+backing, the rings startup clip, the map bottom edge, the card kept in the small view (VIEW no longer
+rebuilds the map), and `REPAIR CONFIG AFTER HYBRID` on a unit left broken by the hybrid's RESTORE.
+Not yet checked in a car: the cluster map area and shift, the H.264 dump.
 
 ## Building the SD card
 
