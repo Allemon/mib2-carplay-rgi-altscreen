@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""Render the fork's startup clip: four rings drawn on black while they settle from a slight
-zoom-in to their final size, one soft light sheen, hold.
+"""Render the fork's startup clip, one of two styles:
+
+  glow (default)  arc pieces of the four rings fly in from around the badge, spinning, and lock
+                  into the rings with a bright white bloom and faint ghost arcs; the bloom then
+                  settles to a soft halo around crisp white rings and holds
+  draw            four silver rings drawn on black while they settle from a slight zoom-in to
+                  their final size, one soft light sheen, hold
 
 Writes the map display's embedded clip format directly (see
 Toolbox/carplay_alt_screen/mirror_display/tools/build_startup_logo.py and src/startup_logo.cpp):
@@ -9,6 +14,7 @@ The map display shows it 1:1 on the cluster plane, then fades it into the CarPla
 
   python3 Tools/make_startup_rings.py Toolbox/carplay_alt_screen/mirror_display/assets/logo_frames.z
   python3 Tools/make_startup_rings.py out.z --preview rings.mp4      # also an H.264 preview (ffmpeg)
+  python3 Tools/make_startup_rings.py out.z --style draw
 """
 
 import argparse
@@ -96,6 +102,109 @@ def render():
     return frames
 
 
+# ---- glow style ----------------------------------------------------------------------------
+GLOW_DURATION = 3.2
+GLOW_STROKE = 6.0          # thinner white line, like the reference
+SEGMENTS = 3               # arc pieces per ring
+FLY_START, FLY_SPREAD, FLY_TIME = 0.10, 0.55, 0.95   # first piece, last start offset, flight time
+FLY_DIST, FLY_SPIN = 110.0, 2.6                      # start offset (px) and rotation (rad) scale
+GLOW_ZOOM_FROM, GLOW_ZOOM_TIME = 1.08, 2.0
+BLOOM_PEAK_T, BLOOM_PEAK, BLOOM_REST = 1.15, 1.7, 0.45  # bloom gain: peaks as pieces lock, settles
+GHOST_GAIN, GHOST_FADE = 0.28, 1.7                   # faint trailing arcs, gone by GHOST_FADE s
+
+
+def box_blur(img, radius, passes=3):
+    """Separable box blur repeated 3x (close to a Gaussian), edges clamped."""
+    out = img
+    for _ in range(passes):
+        for axis in (0, 1):
+            pad = [(0, 0), (0, 0)]
+            pad[axis] = (radius + 1, radius)
+            c = np.cumsum(np.pad(out, pad, mode="edge"), axis=axis, dtype=np.float32)
+            n = out.shape[axis]
+            hi = np.take(c, np.arange(2 * radius + 1, 2 * radius + 1 + n), axis=axis)
+            lo = np.take(c, np.arange(0, n), axis=axis)
+            out = (hi - lo) / (2 * radius + 1)
+    return out
+
+
+def render_glow():
+    rng = np.random.default_rng(7)   # fixed seed: the same clip on every build
+    cx0 = WIDTH / 2.0
+    centers = [cx0 + (i - 1.5) * PITCH for i in range(4)]
+    left, right = int(cx0 - 420), int(cx0 + 420)
+    top, bottom = 0, HEIGHT
+    xs = np.arange(left, right, dtype=np.float32)[None, :] + 0.5
+    ys = np.arange(top, bottom, dtype=np.float32)[:, None] + 0.5
+    seg_arc = 2.0 * np.pi / SEGMENTS
+
+    pieces = []   # (ring centre x, arc start angle, start offset dx, dy, spin, start time)
+    for i, cx in enumerate(centers):
+        base = rng.uniform(0.0, 2.0 * np.pi)
+        for k in range(SEGMENTS):
+            a0 = base + k * seg_arc
+            mid = a0 + seg_arc / 2.0
+            direction = mid + rng.uniform(-0.6, 0.6)      # mostly outward from the ring
+            dist = FLY_DIST * rng.uniform(0.6, 1.2)
+            pieces.append((cx, a0, np.sin(direction) * dist, -np.cos(direction) * dist,
+                           FLY_SPIN * rng.uniform(-1.0, 1.0),
+                           FLY_START + rng.uniform(0.0, FLY_SPREAD)))
+
+    def arc_alpha(u, v, cx, cy, a0, length, radius, stroke, scale):
+        dx, dy = u - cx, v - cy
+        dist = np.sqrt(dx * dx + dy * dy)
+        band = np.clip((stroke / 2.0 - np.abs(dist - radius)) * scale + 0.5, 0.0, 1.0)
+        if length >= 2.0 * np.pi - 1e-6:
+            return band
+        rel = np.mod(np.arctan2(dx, -dy) - a0, 2.0 * np.pi)   # angle into the arc, clockwise
+        edge = np.minimum(rel, length - rel) * radius * scale  # px from the nearer arc end
+        return band * np.clip(edge / 1.2 + 0.5, 0.0, 1.0) * (rel <= length)
+
+    frames = []
+    count = int(round(GLOW_DURATION * FPS))
+    for n in range(count):
+        t = n / FPS
+        scale = 1.0 + (GLOW_ZOOM_FROM - 1.0) * (1.0 - ease_out_cubic(t / GLOW_ZOOM_TIME))
+        u = (xs - cx0) / scale + cx0
+        v = (ys - CENTER_Y) / scale + CENTER_Y
+        line = np.zeros((bottom - top, right - left), dtype=np.float32)
+        ghost = np.zeros_like(line)
+        locked = [all(t >= q[5] + FLY_TIME for q in pieces if q[0] == cx) for cx in centers]
+        for cx, done in zip(centers, locked):
+            if done:   # every piece home: one seamless ring, no joints
+                line = np.maximum(line, arc_alpha(u, v, cx, CENTER_Y, 0.0, 2.0 * np.pi,
+                                                  RADIUS, GLOW_STROKE, scale))
+        for cx, a0, ox, oy, spin, t0 in pieces:
+            p = (t - t0) / FLY_TIME
+            if p <= 0.0 or locked[centers.index(cx)]:
+                continue
+            e = ease_out_cubic(p)
+            k = 1.0 - e                                   # 1 far away .. 0 locked in place
+            length = seg_arc * (0.35 + 0.65 * e) + (0.02 if p >= 1.0 else 0.0)  # tiny overlap
+            appear = np.clip(p * 4.0, 0.0, 1.0)           # pieces fade in as they set off
+            line = np.maximum(line, appear * arc_alpha(
+                u, v, cx + ox * k, CENTER_Y + oy * k, a0 + spin * k, length,
+                RADIUS, GLOW_STROKE, scale))
+            if t < GHOST_FADE and k > 0.02:
+                # A thin ghost a little outside, lagging behind the piece.
+                kk = min(1.0, k * 1.35)
+                ghost = np.maximum(ghost, arc_alpha(
+                    u, v, cx + ox * kk, CENTER_Y + oy * kk, a0 + spin * kk - 0.25, length * 0.8,
+                    RADIUS + 5.0, 1.6, scale) * (1.0 - t / GHOST_FADE))
+        # Bloom gain: rises with the flight, peaks as the pieces lock, settles to a soft halo.
+        if t < BLOOM_PEAK_T:
+            gain = BLOOM_PEAK * ease_in_out(t / BLOOM_PEAK_T)
+        else:
+            gain = BLOOM_REST + (BLOOM_PEAK - BLOOM_REST) * (1.0 - ease_out_cubic((t - BLOOM_PEAK_T) / 1.2))
+        bloom = 0.8 * box_blur(line, 4) + 0.6 * box_blur(line, 14)
+        value = np.clip(line + GHOST_GAIN * ghost + gain * bloom, 0.0, 1.0)
+        frame = np.zeros((HEIGHT, WIDTH, 4), dtype=np.uint8)
+        frame[..., 3] = 255
+        frame[top:bottom, left:right, :3] = np.round(value * 255.0).astype(np.uint8)[..., None]
+        frames.append(frame.tobytes())
+    return frames
+
+
 def write_clip(frames, path):
     with open(path, "wb") as out:
         out.write(MAGIC + struct.pack("<IIII", WIDTH, HEIGHT, FPS, len(frames)))
@@ -116,8 +225,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("output")
     parser.add_argument("--preview")
+    parser.add_argument("--style", choices=("glow", "draw"), default="glow")
     args = parser.parse_args()
-    clip = render()
+    clip = render_glow() if args.style == "glow" else render()
     write_clip(clip, args.output)
     if args.preview:
         write_preview(clip, args.preview)
