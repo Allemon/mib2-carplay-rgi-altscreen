@@ -56,6 +56,12 @@ expect_file "$STATE/cluster-shift.txt" "small_dx=-476"
 run 0 "CLUSTER_SHIFT=off none" "$S/cluster_shift_off.sh"
 expect_file "$STATE/cluster-shift.txt" -
 
+run 0 "RGI_BACKING=off applies=LIVE" "$S/rgi_backing_off.sh"
+expect_file "$STATE/rgi-backing-off" off
+run 0 "RGI_BACKING=on applies=LIVE" "$S/rgi_backing_on.sh"
+expect_file "$STATE/rgi-backing-off" -
+run 2 "usage" "$S/rgi_backing.sh" maybe
+
 run 0 "VERBOSE_LOGS=on" "$S/rgi_verbose_on.sh"
 expect_file "$ROOT/mnt/app/carplay_verbose" ""
 run 0 "VERBOSE_LOGS=off" "$S/rgi_verbose_off.sh"

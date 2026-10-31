@@ -9,8 +9,11 @@
  *   101 = stock 987 KDK backing  (Image, 328x180)      — sport/full size
  *   102 = stock 987 KDK backing  (Image, 210x153)      — popup size
  *
- * While CarPlay shows a route only the maneuver animation is visible: both backings stay at
- * opacity 0, so the arrow sits directly on the map.  Stock gets its backing model back on release.
+ * While CarPlay shows a route the stage's backing (101 in the tube, 102 in the popup) sits under
+ * the arrow and follows its opacity, as before V3.8 Fix1, so the map does not show through the
+ * maneuver panel.  MMI-Cockpit-Carplay fork: state/rgi-backing-off (GEM "RGI backing: off") keeps
+ * both backings at opacity 0 instead (V3.8 Fix1: the arrow sits directly on the map).  Stock gets
+ * its backing model back on release.
  *
  * CarPlay ownership/navigation gates eligibility; VC FctID44 gates actual visibility,
  * and VC FctID54 selects the KDK stage. The requested View mode never reveals a layer.
@@ -59,6 +62,12 @@ public final class ClusterLayerController {
     private static final Object APPLY_LOCK = new Object();
     /* Arrow fade and Q7 fallback state; guarded by APPLY_LOCK like every DM write. */
     private static int maneuverOpacity = -1;       /* last value written to 98, -1 unknown */
+    private static int fadeBacking;                /* backing that follows 98, 0 = none */
+    /* Fork switch, re-read at most every BACKING_CHECK_MS (applyNow runs on HMI threads). */
+    private static final String BACKING_OFF_FILE = "/mnt/app/root/carplay-altscreen/state/rgi-backing-off";
+    private static final long BACKING_CHECK_MS = 2000L;
+    private static boolean backingOff;
+    private static long backingCheckedAt;
     private static boolean fading;
     private static int fadeFrom, fadeTo, fadeDuration, fadeTerminal;
     private static long fadeStart;
@@ -353,6 +362,7 @@ public final class ClusterLayerController {
                 fading = false;
                 lastCrop = null;
                 maneuverOpacity = 0;
+                fadeBacking = 0;
                 dm.setOpacity(MANEUVER, terminal, 0);
                 if (stockVisible) {
                     dm.setOpacity(popup ? BACKING_POPUP : BACKING_SPORT,
@@ -370,6 +380,7 @@ public final class ClusterLayerController {
                 fading = false;
                 lastCrop = null;
                 maneuverOpacity = 0;
+                fadeBacking = 0;
                 dm.setOpacity(MANEUVER, terminal, 0);
                 dm.setOpacity(BACKING_SPORT, terminal, 0);
                 dm.setOpacity(BACKING_POPUP, terminal, 0);
@@ -388,13 +399,25 @@ public final class ClusterLayerController {
                  * still visible, cut it rather than slide it across the cluster. */
                 fading = false;
                 dm.setOpacity(MANEUVER, terminal, 0);
+                if (fadeBacking != 0) dm.setOpacity(fadeBacking, terminal, 0);
                 maneuverOpacity = 0;
             }
             dm.setCropping(MANEUVER, terminal, cx, cy, cw, ch, dx, dy, cw, ch);
             lastCrop = crop;
+            int backing = popup ? BACKING_POPUP : BACKING_SPORT;
+            int otherBacking = popup ? BACKING_SPORT : BACKING_POPUP;
+            if (backingWanted(now)) {
+                /* Pre-Fix1 placement: the stage backing at the arrow's destination, same opacity. */
+                dm.setPosition(backing, terminal, dx, dy);
+                dm.setOpacity(backing, terminal, maneuverOpacity > 0 ? maneuverOpacity : 0);
+                dm.setOpacity(otherBacking, terminal, 0);
+                fadeBacking = backing;
+            } else {
+                fadeBacking = 0;
+                dm.setOpacity(BACKING_SPORT, terminal, 0);
+                dm.setOpacity(BACKING_POPUP, terminal, 0);
+            }
             fadeManeuverTo(dm, terminal, carplayOpacity, now);
-            dm.setOpacity(BACKING_SPORT, terminal, 0);
-            dm.setOpacity(BACKING_POPUP, terminal, 0);
             errorLogged = false;
         } catch (Throwable t) {
             /* Never throw into HMI/DM threads, but keep the first failure diagnosable. */
@@ -404,6 +427,21 @@ public final class ClusterLayerController {
             }
         }
         if (q7FallbackAt != 0L) wakeFader();
+    }
+
+    /** Called under APPLY_LOCK.  True unless the fork's rgi-backing-off switch file exists. */
+    private static boolean backingWanted(long now) {
+        if (backingCheckedAt == 0L || now < backingCheckedAt
+                || now - backingCheckedAt >= BACKING_CHECK_MS) {
+            boolean off;
+            try { off = new java.io.File(BACKING_OFF_FILE).exists(); }
+            catch (Throwable t) { off = false; }
+            if (off != backingOff || backingCheckedAt == 0L)
+                Log.i("ClusterLayers", "RGI backing " + (off ? "off (" + BACKING_OFF_FILE + ")" : "on"));
+            backingOff = off;
+            backingCheckedAt = now;
+        }
+        return !backingOff;
     }
 
     /** Called under APPLY_LOCK.  Starts (or retargets) the ramp of 98 toward target. */
@@ -418,6 +456,7 @@ public final class ClusterLayerController {
         fading = false;
         if (from < 0) {
             dm.setOpacity(MANEUVER, terminal, 0);
+            if (fadeBacking != 0) dm.setOpacity(fadeBacking, terminal, 0);
             maneuverOpacity = from = 0;
         }
         if (from == target) return;
@@ -445,6 +484,7 @@ public final class ClusterLayerController {
         }
         try {
             fadeDm.setOpacity(MANEUVER, fadeTerminal, value);
+            if (fadeBacking != 0) fadeDm.setOpacity(fadeBacking, fadeTerminal, value);
             maneuverOpacity = value;
         } catch (Throwable t) {
             fading = false;
