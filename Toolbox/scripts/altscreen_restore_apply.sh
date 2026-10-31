@@ -165,6 +165,11 @@ rm -f "$JAR" "$TMP" "$JAR.basevideo3.tmp" || {
     echo "FAIL: cannot remove project-owned carplay_hook.jar"; exit 1; }
 [ ! -e "$JAR" ] || { mount_app_ro >/dev/null 2>&1 || true; echo "FAIL: carplay_hook.jar remains after removal"; exit 1; }
 echo "HMI_CONTROL_PLANE=REMOVED project_owned=YES permanent_oem_backup=NOT_USED"
+# MMI-Cockpit-Carplay fork: the GEM "Verbose Java logs" marker (rgi_verbose.sh).
+if [ -e "$DEVICE_ROOT/mnt/app/carplay_verbose" ]; then
+    rm -f "$DEVICE_ROOT/mnt/app/carplay_verbose" 2>/dev/null &&
+        echo "VERBOSE_LOGS_MARKER=REMOVED" || echo "WARN: VERBOSE_LOGS_MARKER=RETAINED"
+fi
 sync >/dev/null 2>&1 || true
 mount_app_ro || { echo "FAIL: cannot remount /mnt/app read-only"; exit 1; }
 
