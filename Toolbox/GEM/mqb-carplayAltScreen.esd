@@ -91,6 +91,30 @@ script
    label   "Cluster map area: 1080 px (Amap/Baidu, no card)"
 
 script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/map_eta_on.sh"
+   label   "Map ETA panel: on (arrival, min, km)"
+
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/map_eta_off.sh"
+   label   "Map ETA panel: off (V3.8)"
+
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_safe_top_normal.sh"
+   label   "Map top edge: normal (72)"
+
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_safe_top_90.sh"
+   label   "Map top edge: 90 (card lower)"
+
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_safe_top_105.sh"
+   label   "Map top edge: 105 (card lower)"
+
+script
+   value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_safe_top_120.sh"
+   label   "Map top edge: 120 (card lowest)"
+
+script
    value   sys 1 0x0100 "/eso/hmi/engdefs/scripts/mqb/cluster_safe_bottom_normal.sh"
    label   "Map bottom edge: normal (450)"
 

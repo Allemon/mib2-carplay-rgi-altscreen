@@ -193,3 +193,11 @@
 !/Toolbox/scripts/night_sync_on.sh
 !/Toolbox/scripts/night_sync_off.sh
 !/Toolbox/scripts/card_small_behind.sh
+!/Toolbox/scripts/cluster_safe_top.sh
+!/Toolbox/scripts/cluster_safe_top_normal.sh
+!/Toolbox/scripts/cluster_safe_top_90.sh
+!/Toolbox/scripts/cluster_safe_top_105.sh
+!/Toolbox/scripts/cluster_safe_top_120.sh
+!/Toolbox/scripts/map_eta.sh
+!/Toolbox/scripts/map_eta_on.sh
+!/Toolbox/scripts/map_eta_off.sh

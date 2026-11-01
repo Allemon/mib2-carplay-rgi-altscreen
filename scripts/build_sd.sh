@@ -75,7 +75,15 @@ Toolbox/scripts/cluster_ui_size_v38.sh
 Toolbox/scripts/cluster_ui_size_compact.sh
 Toolbox/scripts/night_sync.sh
 Toolbox/scripts/night_sync_on.sh
-Toolbox/scripts/night_sync_off.sh"
+Toolbox/scripts/night_sync_off.sh
+Toolbox/scripts/cluster_safe_top.sh
+Toolbox/scripts/cluster_safe_top_normal.sh
+Toolbox/scripts/cluster_safe_top_90.sh
+Toolbox/scripts/cluster_safe_top_105.sh
+Toolbox/scripts/cluster_safe_top_120.sh
+Toolbox/scripts/map_eta.sh
+Toolbox/scripts/map_eta_on.sh
+Toolbox/scripts/map_eta_off.sh"
 NATIVE_FILES="$NATIVE/libcarplay_altscreen.so $NATIVE/carplay-alt111-mirror-display $NATIVE/carplay_hook-basevideo3.jar"
 NATIVE_WHAT=all
 if [ "${UPSTREAM_MIRROR:-0}" = 1 ]; then

@@ -83,6 +83,15 @@ expect_file "$STATE/night-sync-off" off
 run 0 "NIGHT_SYNC=on" "$S/night_sync_on.sh"
 expect_file "$STATE/night-sync-off" -
 
+run 0 "CLUSTER_SAFE_TOP=105 top=105" "$S/cluster_safe_top_105.sh"
+expect_file "$STATE/cluster-safe-top.txt" 105
+run 0 "CLUSTER_SAFE_TOP=normal top=72" "$S/cluster_safe_top_normal.sh"
+expect_file "$STATE/cluster-safe-top.txt" -
+run 0 "MAP_ETA=on" "$S/map_eta_on.sh"
+expect_file "$STATE/map-eta-on" on
+run 0 "MAP_ETA=off" "$S/map_eta_off.sh"
+expect_file "$STATE/map-eta-on" -
+
 run 0 "RGI_BACKING=off applies=LIVE" "$S/rgi_backing_off.sh"
 expect_file "$STATE/rgi-backing-off" off
 run 0 "RGI_BACKING=on applies=LIVE" "$S/rgi_backing_on.sh"

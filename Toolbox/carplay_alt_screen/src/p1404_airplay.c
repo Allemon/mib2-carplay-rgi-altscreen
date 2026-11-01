@@ -627,41 +627,75 @@ static struct alt_layout_rects alt_layout_rects(void) {
 }
 
 /*
- * Optional safeArea bottom edge (MMI-Cockpit-Carplay fork, GEM "Map bottom edge").
+ * Optional safeArea top and bottom edges (MMI-Cockpit-Carplay fork, GEM "Map top edge" /
+ * "Map bottom edge").
  *
- * Google Maps and Waze put the vehicle just above the safeArea's bottom edge. V3.5 put that edge
- * at y=450, where the stock VC lower info bar (road name | arrival time) covers it.
- * state/cluster-safe-bottom.txt (cluster_safe_bottom.sh) moves the edge up, so those apps draw
- * the vehicle above the bar; the top stays at 72. Read when the viewAreas are built (/info),
- * so a change applies on the next phone connection. No file or a value outside 330..450 keeps
- * V3.5's 450.
+ * V3.5 fixed the safeArea at y=72..450. The phone's maneuver card hangs from the top edge,
+ * where the stock VC top bar (range | media) overlaps it; Google Maps and Waze put the vehicle
+ * just above the bottom edge, where the lower info bar (road name | arrival time) covers it.
+ * state/cluster-safe-top.txt (60..140) and state/cluster-safe-bottom.txt (330..450) move the
+ * edges. Read when the viewAreas are built (/info), so a change applies on the next phone
+ * connection. No file or a value out of range keeps V3.5's edge.
  */
-#define ALT_SAFE_TOP 72u
+#define ALT_SAFE_TOP_DEFAULT 72u
 #define ALT_SAFE_BOTTOM_DEFAULT 450u
-static uint32_t alt_safe_height(void) {
-    char text[16];
+#define ALT_SAFE_TOP alt_safe_top()
+static uint32_t alt_state_number(const char *leaf, long lo, long hi, uint32_t fallback) {
+    char path[160], text[16];
     char *end = NULL;
-    long bottom;
-    FILE *f = fopen(ALT_CARD_STATE_DIR "cluster-safe-bottom.txt", "r");
-    if (!f) return ALT_SAFE_BOTTOM_DEFAULT - ALT_SAFE_TOP;
+    long value;
+    FILE *f;
+    snprintf(path, sizeof(path), ALT_CARD_STATE_DIR "%s", leaf);
+    f = fopen(path, "r");
+    if (!f) return fallback;
     text[0] = 0;
     if (!fgets(text, sizeof(text), f)) text[0] = 0;
     fclose(f);
     alt_trim_line(text);
-    bottom = strtol(text, &end, 10);
-    if (end == text || *end || bottom < 330 || bottom > (long)ALT_SAFE_BOTTOM_DEFAULT) {
-        altscreen_log("ALTAREA_SAFE_BOTTOM ignored value=%s reason=invalid", text);
-        return ALT_SAFE_BOTTOM_DEFAULT - ALT_SAFE_TOP;
+    value = strtol(text, &end, 10);
+    if (end == text || *end || value < lo || value > hi) {
+        altscreen_log("ALTAREA_STATE ignored file=%s value=%s reason=invalid", leaf, text);
+        return fallback;
     }
-    return (uint32_t)bottom - ALT_SAFE_TOP;
+    return (uint32_t)value;
+}
+
+static uint32_t alt_safe_top(void) {
+    return alt_state_number("cluster-safe-top.txt", 60, 140, ALT_SAFE_TOP_DEFAULT);
+}
+
+static uint32_t alt_safe_height(void) {
+    return alt_state_number("cluster-safe-bottom.txt", 330, ALT_SAFE_BOTTOM_DEFAULT,
+                            ALT_SAFE_BOTTOM_DEFAULT) - alt_safe_top();
+}
+
+/*
+ * Map ETA (MMI-Cockpit-Carplay fork, GEM "Map ETA: on / off"): V3.8 asks for the cluster
+ * map without the phone's arrival-time panel (showETA=no) and writes the ETA into the VC's
+ * lower info bar instead. state/map-eta-on asks for the panel too, as on the MMI.
+ */
+#define CP_ALT_CLUSTER_MAP_URL_ETA \
+    "maps:/car/instrumentcluster/map?showSpeedLimit=user&showCompass=user&showETA=yes&maneuverLayout="
+#define CP_ALT_CLUSTER_CARD_URL_LEFT_ETA \
+    "maps:/car/instrumentcluster?showSpeedLimit=user&showCompass=user&showETA=yes&maneuverLayout=leftaligned"
+#define CP_ALT_CLUSTER_CARD_URL_TOP_ETA \
+    "maps:/car/instrumentcluster?showSpeedLimit=user&showCompass=user&showETA=yes&maneuverLayout=topaligned"
+#define CP_ALT_CLUSTER_CARD_URL_RIGHT_ETA \
+    "maps:/car/instrumentcluster?showSpeedLimit=user&showCompass=user&showETA=yes&maneuverLayout=rightaligned"
+static int alt_map_eta_on(void) {
+    FILE *f = fopen(ALT_CARD_STATE_DIR "map-eta-on", "r");
+    if (!f) return 0;
+    fclose(f);
+    return 1;
 }
 
 static const char *alt_cluster_url_for_card(int card_mode, const char **layout_name) {
+    const int eta = alt_map_eta_on();
     switch (card_mode) {
-    case 1: *layout_name = "card-left"; return CP_ALT_CLUSTER_CARD_URL_LEFT;
-    case 2: *layout_name = "card-top"; return CP_ALT_CLUSTER_CARD_URL_TOP;
-    case 3: *layout_name = "card-right"; return CP_ALT_CLUSTER_CARD_URL_RIGHT;
-    default: *layout_name = "map-only"; return CP_ALT_CLUSTER_MAP_URL;
+    case 1: *layout_name = "card-left"; return eta ? CP_ALT_CLUSTER_CARD_URL_LEFT_ETA : CP_ALT_CLUSTER_CARD_URL_LEFT;
+    case 2: *layout_name = "card-top"; return eta ? CP_ALT_CLUSTER_CARD_URL_TOP_ETA : CP_ALT_CLUSTER_CARD_URL_TOP;
+    case 3: *layout_name = "card-right"; return eta ? CP_ALT_CLUSTER_CARD_URL_RIGHT_ETA : CP_ALT_CLUSTER_CARD_URL_RIGHT;
+    default: *layout_name = "map-only"; return eta ? CP_ALT_CLUSTER_MAP_URL_ETA : CP_ALT_CLUSTER_MAP_URL;
     }
 }
 
@@ -939,9 +973,9 @@ static cf_obj make_cluster_layout_view_areas(uint32_t w, uint32_t h,
     full.y = ALT_SAFE_TOP;
     full.w = g.full_w;
     full.h = alt_safe_height();
-    if (full.h != ALT_SAFE_BOTTOM_DEFAULT - ALT_SAFE_TOP)
-        altscreen_log("ALTAREA_SAFE_BOTTOM applied bottom=%u top=%u height=%u",
-                      ALT_SAFE_TOP + full.h, ALT_SAFE_TOP, full.h);
+    if (full.y != ALT_SAFE_TOP_DEFAULT || full.y + full.h != ALT_SAFE_BOTTOM_DEFAULT)
+        altscreen_log("ALTAREA_SAFE_EDGES applied top=%u bottom=%u height=%u",
+                      full.y, full.y + full.h, full.h);
     if (!full.h || !alt_safe_rect_valid(&full, view_w, h)) goto fail;
 
     v = rect_dict(view_w, h, 0u, 0u);
