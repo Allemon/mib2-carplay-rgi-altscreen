@@ -1,0 +1,14 @@
+# MMI-Cockpit-Carplay fork: settings every INSTALL starts with (Toolbox/scripts/fork_defaults.sh).
+# The GEM entries change them afterwards; a new INSTALL comes back to these. Edit on the SD card,
+# then run INSTALL again. Without this file INSTALL keeps V3.8's defaults.
+
+card_position=left        # left | top | right                 (CARD LEFT / TOP / RIGHT; card installs only)
+card_small_view=hide      # keep | behind | hide               (hide: no card in the small view, VIEW fades)
+map_top_edge=90           # 72 (V3.8) .. 140                    (card starts below the VC top bar)
+map_bottom_edge=420       # 330 .. 450 (V3.8)                   (vehicle above the road-name bar)
+map_area_width=1440       # 1440 (full) | 1200 | 1140 | 1080    (Amap / Baidu centring)
+map_eta_panel=off         # on | off                            (phone's arrival panel on the map)
+rgi_backing=on            # on | off                            (dark panel under the RGI arrow)
+night_sync=on             # on | off                            (cluster day/night without MMI flicker)
+cluster_ui_size=v38       # v38 (200 mm) | compact (292 mm)     (card and labels as on the MMI)
+map_shift=off             # off | sporttest

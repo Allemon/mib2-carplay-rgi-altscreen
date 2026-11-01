@@ -201,3 +201,5 @@
 !/Toolbox/scripts/map_eta.sh
 !/Toolbox/scripts/map_eta_on.sh
 !/Toolbox/scripts/map_eta_off.sh
+!/Toolbox/scripts/fork_defaults.sh
+!/Toolbox/carplay_alt_screen/fork-defaults.txt

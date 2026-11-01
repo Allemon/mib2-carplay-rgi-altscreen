@@ -83,7 +83,9 @@ Toolbox/scripts/cluster_safe_top_105.sh
 Toolbox/scripts/cluster_safe_top_120.sh
 Toolbox/scripts/map_eta.sh
 Toolbox/scripts/map_eta_on.sh
-Toolbox/scripts/map_eta_off.sh"
+Toolbox/scripts/map_eta_off.sh
+Toolbox/scripts/fork_defaults.sh
+Toolbox/carplay_alt_screen/fork-defaults.txt"
 NATIVE_FILES="$NATIVE/libcarplay_altscreen.so $NATIVE/carplay-alt111-mirror-display $NATIVE/carplay_hook-basevideo3.jar"
 NATIVE_WHAT=all
 if [ "${UPSTREAM_MIRROR:-0}" = 1 ]; then

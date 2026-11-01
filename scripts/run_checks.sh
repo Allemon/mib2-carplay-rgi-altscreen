@@ -32,6 +32,13 @@ fi
 
 bash checks/gem_scripts_check.sh && pass "GEM scripts" || fail "GEM scripts"
 bash checks/repair_after_hybrid_check.sh && pass "repair after hybrid" || fail "repair after hybrid"
+mkdir -p "$TMP/defaults-state"
+if sh Toolbox/scripts/fork_defaults.sh Toolbox/carplay_alt_screen/fork-defaults.txt "$TMP/defaults-state" |
+   grep -q '^FORK_DEFAULTS=DONE applied=[1-9][0-9]* skipped=0$'; then
+    pass "fork-defaults.txt applies cleanly"
+else
+    fail "fork-defaults.txt has invalid lines"
+fi
 
 if command -v clang >/dev/null 2>&1; then
     ok=1

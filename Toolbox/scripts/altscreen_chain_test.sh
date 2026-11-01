@@ -266,6 +266,11 @@ install_runtime_scripts(){
         printf '' > "$RUNTIME_STAGE/state/card.enabled" || return 1
         chmod 644 "$RUNTIME_STAGE/state/card.enabled" || return 1
     fi
+    # MMI-Cockpit-Carplay fork: the owner's default settings
+    # (Toolbox/carplay_alt_screen/fork-defaults.txt); never fails the install.
+    if [ -f "$SD_SCRIPTS/fork_defaults.sh" ]; then
+        /bin/sh "$SD_SCRIPTS/fork_defaults.sh" "$ARTIFACT_DIR/fork-defaults.txt" "$RUNTIME_STAGE/state" || true
+    fi
     echo "RUNTIME_STAGING_POLICY=BOUNDED path=/mnt/app/root/.carplay-altscreen.new legacy_pid_staging=reaped"
     for name in $RUNTIME_SCRIPTS; do
         src="$SD_SCRIPTS/$name"; dst="$RUNTIME_STAGE/bin/$name"
