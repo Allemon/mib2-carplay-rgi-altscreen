@@ -69,6 +69,7 @@ Toolbox/scripts/cluster_safe_bottom_380.sh
 Toolbox/scripts/card_small.sh
 Toolbox/scripts/card_small_keep.sh
 Toolbox/scripts/card_small_hide.sh
+Toolbox/scripts/card_small_behind.sh
 Toolbox/scripts/cluster_ui_size.sh
 Toolbox/scripts/cluster_ui_size_v38.sh
 Toolbox/scripts/cluster_ui_size_compact.sh

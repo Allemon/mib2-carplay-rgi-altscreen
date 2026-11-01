@@ -64,8 +64,15 @@ run 2 "usage" "$S/cluster_safe_bottom.sh" 300
 
 run 0 "CARD_SMALL=hide applies=NEXT_VIEW" "$S/card_small_hide.sh"
 expect_file "$STATE/card-small-hide" hide
+run 0 "CARD_SMALL=behind applies=NEXT_VIEW" "$S/card_small_behind.sh"
+expect_file "$STATE/card-small-behind" behind
+expect_file "$STATE/card-small-hide" -
+run 0 "CARD_SMALL=hide applies=NEXT_VIEW" "$S/card_small_hide.sh"
+expect_file "$STATE/card-small-hide" hide
+expect_file "$STATE/card-small-behind" -
 run 0 "CARD_SMALL=keep applies=NEXT_VIEW" "$S/card_small_keep.sh"
 expect_file "$STATE/card-small-hide" -
+expect_file "$STATE/card-small-behind" -
 
 run 0 "CLUSTER_UI_SIZE=compact width_mm=292" "$S/cluster_ui_size_compact.sh"
 expect_file "$STATE/cluster-physical-width.txt" 292

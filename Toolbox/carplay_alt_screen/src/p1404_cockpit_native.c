@@ -1480,6 +1480,9 @@ static void *native_monitor_worker(void *arg) {
             (uint32_t)(wheel_now - view_area_last_poll_at) >=
                 ALT111_VIEW_AREA_POLL_US) {
             desired_view_area = native_read_view_area_target();
+            /* MMI-Cockpit-Carplay fork: card behind the dial keeps FULL in SMALL. */
+            if (desired_view_area == 1 && alt_phone_card_behind_dial())
+                desired_view_area = 0;
             desired_phone_card_mode = alt_phone_card_mode();
             consumer_req_valid =
                 native_read_consumer_keyframe_request(&consumer_req);

@@ -578,6 +578,22 @@ static int alt_phone_card_small_hidden(void) {
     return 1;
 }
 
+/*
+ * "Behind the dial" (state/card-small-behind, GEM "Card in small view: behind dial"): the
+ * SMALL view keeps the FULL viewArea as well as the card context, so VIEW sends the phone
+ * nothing at all. The safeArea stays centred on x=720, so the vehicle stays between the
+ * dials, and a card placed left (CARD LEFT) ends up under the tachometer, which the VC's own
+ * SMALL animation brings over it.
+ */
+int alt_phone_card_behind_dial(void) {
+    FILE *f;
+    if (!alt_phone_card_profile()) return 0;
+    f = fopen(ALT_CARD_STATE_DIR "card-small-behind", "r");
+    if (!f) return 0;
+    fclose(f);
+    return 1;
+}
+
 int alt_phone_card_mode(void) {
     char view[16], layout[128];
     int dx, dy;
@@ -1090,7 +1106,7 @@ void *alt_build_cluster_display(void) {
         two_area_capable &&
         (strstr(cluster_safe.layout, "LayoutMIB2HighB9") != NULL ||
          strstr(cluster_safe.layout, "LayoutMIB2HighQ7") != NULL);
-    initial_view_area =
+    initial_view_area = alt_phone_card_behind_dial() ? 0 :
         layout_known && !strcmp(cluster_safe.view, "SMALL") ? 1 : 0;
 
     /*
