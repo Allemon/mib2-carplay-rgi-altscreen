@@ -543,6 +543,9 @@ static int alt_load_hmi_layout(char *view, size_t view_cap,
  * unknown layouts keep the map-only context.
  */
 #define ALT_CARD_STATE_DIR "/mnt/app/root/carplay-altscreen/state/"
+/* Fork day/night state, defined with the day/night block further down. */
+static volatile int g_alt_night;
+static int alt_night_sync_enabled(void);
 static int alt_phone_card_profile(void) {
     FILE *f = fopen(ALT_CARD_STATE_DIR "card.enabled", "r");
     if (!f) return 0;
@@ -1126,6 +1129,12 @@ void *alt_build_cluster_display(void) {
         !set_i64(dict, "features", DISPLAY_FEATURE_KNOBS |
                                            DISPLAY_FEATURE_HIGH_FIDELITY_TOUCH) ||
         !set_i64(dict, "primaryInputDevice", PRIMARY_INPUT_KNOBS)) goto fail;
+    if (alt_night_sync_enabled() && __sync_fetch_and_add(&g_alt_night, 0) >= 0) {
+        /* Fork: per-display nightMode, see the day/night block above. */
+        const int night = __sync_fetch_and_add(&g_alt_night, 0);
+        if (!set_i64(dict, "nightMode", night ? 1 : 0)) goto fail;
+        altscreen_log("PHASE=NIGHT_MODE_INFO cluster_nightMode=%d", night);
+    }
 
     vs = cf_str_new(d->uuid, -1);
     if (!vs || !cf_dict_set_cstr_obj(dict, "uuid", vs)) goto fail;
@@ -1490,21 +1499,38 @@ done:
 }
 
 /*
- * Day/night sync (MMI-Cockpit-Carplay fork; ported from PR #14 on the hybrid).
+ * Day/night on the cluster (MMI-Cockpit-Carplay fork; replaces PR #14's kick).
  *
- * The head unit hands the phone its day/night mode once at connect, as the "nightMode"
- * property (AirPlayReceiverServer/SessionPlatformCopyProperty below records it); later
- * changes come from the light switch. Google Maps nevertheless starts the cluster map in its
- * other theme, and a repeat of the current mode is a no-op for iOS: only a real change makes
- * it re-evaluate, which is why toggling the lights fixed it. So once the cluster video runs,
- * send the opposite mode and, 300 ms later, the real one, in the stock command shape
- * {type: setNightMode, params: {nightMode: <bool>}}; again 3 s later, because the phone
- * builds the cluster UI a moment after the first frame. Nothing is sent when no mode was
- * seen; state/night-sync-off turns it off.
+ * Stock setNightMode carries no display UUID, so CarKit applies it to the primary screen and
+ * to secondary screens that do not advertise a per-display nightMode (luka-dev's finding in
+ * hook/altscreen/altscreen_hook.c). Google Maps nevertheless started the cluster map in the
+ * other theme until the lights were toggled. So, like luka's AltScreen:
+ *   1. the cluster display dict in /info advertises nightMode with the head unit's current
+ *      mode, so the phone builds the cluster UI in the right theme from the start;
+ *   2. every later change the head unit makes (AirPlayReceiverSessionSetNightMode, the light
+ *      switch) is forwarded unchanged and repeated as a UUID-addressed setNightMode for the
+ *      cluster only, so the MMI screen sees exactly one switch, as on stock;
+ *   3. when the cluster video starts, the current mode is sent once more to the cluster only,
+ *      which corrects a /info that was built before the mode was known.
+ * The mode comes from the "nightMode" property the head unit answers at connect and from its
+ * SetNightMode calls; once dio has called SetNightMode, a later /info no longer overrides it.
+ * state/night-sync-off restores V3.8 (no key, no cluster commands).
  */
 static volatile int g_alt_night = -1;   /* -1 unknown, 0 day, 1 night */
+static volatile int g_alt_night_from_dio;
 static volatile int g_alt_night_busy;
 static uint32_t g_alt_night_seq;
+/* The running cluster stream, recorded at its first real frame. */
+static void *volatile g_alt_night_receiver;
+static void *volatile g_alt_night_stream;
+static volatile uint32_t g_alt_night_generation;
+
+static int alt_night_sync_enabled(void) {
+    FILE *f = fopen(ALT_CARD_STATE_DIR "night-sync-off", "r");
+    if (!f) return 1;
+    fclose(f);
+    return 0;
+}
 
 static const void *alt_cf_bool(int value) {
     const void *const *ref = (const void *const *)dlsym(
@@ -1514,37 +1540,48 @@ static const void *alt_cf_bool(int value) {
 
 static void alt_note_night_property(const char *where, const void *value) {
     int night;
+    int64_t number = 0;
     if (!value) return;
     if (value == alt_cf_bool(1)) night = 1;
     else if (value == alt_cf_bool(0)) night = 0;
+    else if (alt_cf_int64(value, &number)) night = number != 0;
     else {
-        altscreen_log("WARN PHASE=NIGHT_MODE_PROPERTY source=%s value_not_cf_boolean=1", where);
+        altscreen_log("WARN PHASE=NIGHT_MODE_PROPERTY source=%s value_not_boolean=1", where);
+        return;
+    }
+    if (__sync_fetch_and_add(&g_alt_night_from_dio, 0)) {
+        altscreen_log("PHASE=NIGHT_MODE_PROPERTY source=%s mode=%s ignored=dio_set_it",
+                      where, night ? "night" : "day");
         return;
     }
     __sync_lock_test_and_set(&g_alt_night, night);
     altscreen_log("PHASE=NIGHT_MODE_PROPERTY source=%s mode=%s", where, night ? "night" : "day");
 }
 
+/* {type: setNightMode, params: {uuid: <cluster>, nightMode: <number>}}; CarKit reads boolValue. */
 static int alt_send_cluster_night(void *receiver, void *stream, uint32_t generation,
                                   int night) {
     airplay_send_command_fn send_command;
     struct alt111_event_context *ctx = NULL;
-    cf_obj command = NULL, params = NULL, type = NULL;
-    const void *flag = alt_cf_bool(night);
+    const struct altscreen_display *display = altscreen_cluster_display();
+    cf_obj command = NULL, params = NULL, type = NULL, uuid = NULL;
     uint32_t seq = __sync_add_and_fetch(&g_alt_night_seq, 1u);
     int rc = -1;
 
+    if (!receiver || !stream || !generation || !display || !display->uuid) return -1;
     send_command = (airplay_send_command_fn)
         p1404_stock_symbol_named("AirPlayReceiverSessionSendCommand");
-    if (!send_command || !flag || !cf_dict_create_mutable || !cf_str_new ||
+    if (!send_command || !cf_dict_create_mutable || !cf_str_new || !cf_num_new ||
         !cf_dict_set || !cf_release)
         goto done;
     command = cf_dict_create_mutable(NULL, 0, NULL, NULL, NULL);
     params = cf_dict_create_mutable(NULL, 0, NULL, NULL, NULL);
     type = cf_str_new("setNightMode", -1);
-    if (!command || !params || !type) goto done;
+    uuid = cf_str_new(display->uuid, -1);
+    if (!command || !params || !type || !uuid) goto done;
     if (!cf_dict_set_cstr_obj(command, "type", type) ||
-        !cf_dict_set_cstr_obj(params, "nightMode", (cf_obj)flag) ||
+        !cf_dict_set_cstr_obj(params, "uuid", uuid) ||
+        !set_i64(params, "nightMode", night ? 1 : 0) ||
         !cf_dict_set_cstr_obj(command, "params", params))
         goto done;
 
@@ -1567,6 +1604,7 @@ static int alt_send_cluster_night(void *receiver, void *stream, uint32_t generat
     }
 
 done:
+    cf_release_safe(uuid);
     cf_release_safe(type);
     cf_release_safe(params);
     cf_release_safe(command);
@@ -1577,56 +1615,80 @@ done:
     return rc;
 }
 
-struct alt_night_job { void *receiver; void *stream; uint32_t generation; };
+/* Sends from a short helper thread, never from the caller's (dio or render) thread. */
+struct alt_night_job { unsigned delay_ms; const char *reason; };
 extern int pthread_detach(pthread_t thread);
 
-static void *alt_night_sync_thread(void *arg) {
+static void *alt_night_send_thread(void *arg) {
     struct alt_night_job job = *(struct alt_night_job *)arg;
-    static const unsigned delays_ms[2] = { 1000u, 2700u };   /* ~1 s and ~4 s after the frame */
-    unsigned pass;
+    void *receiver, *stream;
+    uint32_t generation;
+    int night, rc;
     free(arg);
-    for (pass = 0; pass < 2u; ++pass) {
-        int night, rc_kick, rc_real;
-        usleep(delays_ms[pass] * 1000u);
-        FILE *off = fopen(ALT_CARD_STATE_DIR "night-sync-off", "r");
-        if (off) {
-            fclose(off);
-            altscreen_log("PHASE=NIGHT_SYNC skipped=1 reason=night-sync-off");
-            break;
-        }
-        night = __sync_fetch_and_add(&g_alt_night, 0);
-        if (night < 0) {
-            altscreen_log("WARN PHASE=NIGHT_SYNC skipped=1 reason=no_night_mode_seen pass=%u", pass + 1u);
-            break;
-        }
-        rc_kick = alt_send_cluster_night(job.receiver, job.stream, job.generation, !night);
-        usleep(300000u);
-        rc_real = alt_send_cluster_night(job.receiver, job.stream, job.generation, night);
-        altscreen_log("PHASE=NIGHT_SYNC pass=%u mode=%s kick_rc=%d real_rc=%d generation=%u",
-                      pass + 1u, night ? "night" : "day", rc_kick, rc_real, job.generation);
-        if (rc_real != 0) break;
+    if (job.delay_ms) usleep(job.delay_ms * 1000u);
+    night = __sync_fetch_and_add(&g_alt_night, 0);
+    receiver = g_alt_night_receiver;
+    stream = g_alt_night_stream;
+    generation = g_alt_night_generation;
+    if (night < 0 || !receiver || !stream || !generation) {
+        altscreen_log("PHASE=NIGHT_SYNC skipped=1 reason=%s mode_known=%d stream_known=%d",
+                      job.reason, night >= 0, receiver && stream && generation);
+    } else {
+        rc = alt_send_cluster_night(receiver, stream, generation, night);
+        altscreen_log("PHASE=NIGHT_SYNC reason=%s mode=%s target=cluster_uuid_only rc=%d generation=%u",
+                      job.reason, night ? "night" : "day", rc, generation);
     }
     __sync_lock_test_and_set(&g_alt_night_busy, 0);
     return NULL;
 }
 
-void alt_night_sync_schedule(void *receiver, void *stream, uint32_t generation) {
+static void alt_night_send_async(unsigned delay_ms, const char *reason) {
     struct alt_night_job *job;
     pthread_t thread;
-    if (!receiver || !stream || !generation) return;
-    if (__sync_lock_test_and_set(&g_alt_night_busy, 1)) return;   /* one at a time */
+    if (!alt_night_sync_enabled()) return;
+    if (__sync_lock_test_and_set(&g_alt_night_busy, 1)) return;   /* one in flight */
     job = (struct alt_night_job *)calloc(1u, sizeof(*job));
     if (!job) { __sync_lock_test_and_set(&g_alt_night_busy, 0); return; }
-    job->receiver = receiver;
-    job->stream = stream;
-    job->generation = generation;
-    if (pthread_create(&thread, NULL, alt_night_sync_thread, job) != 0) {
+    job->delay_ms = delay_ms;
+    job->reason = reason;
+    if (pthread_create(&thread, NULL, alt_night_send_thread, job) != 0) {
         free(job);
         __sync_lock_test_and_set(&g_alt_night_busy, 0);
         altscreen_log("WARN PHASE=NIGHT_SYNC thread_start_failed=1");
         return;
     }
     pthread_detach(thread);
+}
+
+void alt_night_sync_schedule(void *receiver, void *stream, uint32_t generation) {
+    if (!receiver || !stream || !generation) return;
+    g_alt_night_receiver = receiver;
+    g_alt_night_stream = stream;
+    __sync_lock_test_and_set(&g_alt_night_generation, generation);
+    alt_night_send_async(500u, "cluster-stream-start");
+}
+
+/*
+ * dio_manager imports AirPlayReceiverSessionSetNightMode(session, night, completion, ctx)
+ * (luka-dev: MU1316 dio 0x155898). Forward it unchanged for the main screen, then repeat the
+ * mode for the cluster display only.
+ */
+typedef int (*session_set_night_fn)(void *, int, void *, void *);
+int AirPlayReceiverSessionSetNightMode(void *session, int night, void *completion,
+                                       void *context) {
+    static session_set_night_fn real;
+    int rc;
+    if (!real)
+        real = (session_set_night_fn)p1404_stock_symbol_named("AirPlayReceiverSessionSetNightMode");
+    if (!real) return -6700;
+    rc = real(session, night, completion, context);
+    __sync_lock_test_and_set(&g_alt_night, night ? 1 : 0);
+    __sync_lock_test_and_set(&g_alt_night_from_dio, 1);
+    altscreen_log("PHASE=NIGHT_MODE_DIO mode=%s stock_rc=%d cluster_session=%d",
+                  night ? "night" : "day", rc, session && session == g_alt_night_receiver);
+    if (session && session == g_alt_night_receiver)
+        alt_night_send_async(0u, "dio-update");
+    return rc;
 }
 
 int alt_send_cluster_zoom(void *receiver, void *stream,

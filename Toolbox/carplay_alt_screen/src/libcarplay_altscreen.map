@@ -5,6 +5,8 @@
 # ScreenStreamStart handoff, the two exact stock CScreenRender methods needed
 # to isolate private type 111 on displayable 58, and the OEM-map startup gate
 # that the RGI library reaches through dlsym (bus 0x0119).
+# MMI-Cockpit-Carplay fork: AirPlayReceiverSessionSetNightMode, dio's day/night call,
+# repeated for the cluster display (p1404_airplay.c).
 # Every internal helper stays local, which removes any chance of shadowing an
 # unrelated symbol inside dio_manager.
 {
@@ -12,6 +14,7 @@
         AirPlayReceiverServerPlatformCopyProperty;
         AirPlayReceiverSessionPlatformCopyProperty;
         AirPlayReceiverSessionScreen_CopyDisplaysInfo;
+        AirPlayReceiverSessionSetNightMode;
         AirPlayReceiverSessionPlatformControl;
         AirPlayReceiverSessionSetup;
         AirPlayReceiverSessionStart;

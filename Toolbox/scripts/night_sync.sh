@@ -2,10 +2,11 @@
 PATH=${PATH:+$PATH:}/proc/boot:/armle/bin:/armle/scripts:/bin:/usr/bin:/usr/sbin:/sbin:/mnt/app/armle/bin:/mnt/app/armle/sbin:/mnt/app/armle/usr/bin:/mnt/app/armle/usr/sbin:/eso/bin:/eso/bin/apps
 export PATH
 # GEM (MMI-Cockpit-Carplay fork): "Day/night sync: on / off".
-# on   (default) once the cluster video runs, the hook sends the phone the opposite day/night
-#      mode and then the real one (twice), so Google Maps' cluster map takes the right theme
-#      without toggling the lights (src/p1404_airplay.c, alt_night_sync_schedule).
-# off  creates state/night-sync-off: nothing is sent (V3.8).
+# on   (default) the cluster display reports its own day/night mode to the phone at connect,
+#      and every change the head unit makes (light switch) is repeated for the cluster only,
+#      so Google Maps' cluster map takes the right theme and the MMI screen does not flicker
+#      (src/p1404_airplay.c, day/night block).
+# off  creates state/night-sync-off: V3.8 behaviour.
 # Applies on the next phone connection.
 set -u
 mode=${1:-}
