@@ -26,6 +26,9 @@ void altscreen_oem_map_ready(int ready);
 /* Phone maneuver card (INSTALL WITH CARD): 0 = map only, 1/2/3 = card
  * left/top/right. Only the FULL view of a known B9/Q7 layout shows the card. */
 int alt_phone_card_mode(void);
+/* MMI-Cockpit-Carplay fork: re-send the head unit's day/night mode once the cluster video
+ * runs (Google Maps starts the cluster in the wrong theme). See alt_night_sync_schedule. */
+void alt_night_sync_schedule(void *receiver, void *stream, uint32_t generation);
 int alt_request_cluster_after_main(void *receiver);
 void *alt_build_cluster_display(void);
 void *alt_info_add_cluster_display(void *container);

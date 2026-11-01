@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <dlfcn.h>
+#include <pthread.h>
+#include <unistd.h>
 
 /* Optional outside the exact K1004 direct overlay (not linked by some host
  * fixtures and legacy preload builds). */
@@ -1026,6 +1028,31 @@ void *alt_build_cluster_display(void) {
                   geometry_provisional ? 0 : 1);
     /* Match LIVI getInfo.displayEntry when physical panel size is unavailable. */
     physical_width = d->width_mm ? d->width_mm : 200u;
+    {
+        /* MMI-Cockpit-Carplay fork, GEM "Cluster UI size": state/cluster-physical-width.txt
+         * reports another panel width in mm. iOS picks its UI scale from pixels per mm:
+         * the LIVI 200 mm claims 183 ppi, the real 12.3-inch VC (292 mm) is 125 ppi, close
+         * to the MMI, so the maneuver card and labels come out compact and wide like there.
+         * Applies on the next phone connection; 150..400 mm, otherwise ignored. */
+        char text[16];
+        char *end = NULL;
+        long mm;
+        FILE *f = fopen(ALT_CARD_STATE_DIR "cluster-physical-width.txt", "r");
+        if (f) {
+            text[0] = 0;
+            if (!fgets(text, sizeof(text), f)) text[0] = 0;
+            fclose(f);
+            alt_trim_line(text);
+            mm = strtol(text, &end, 10);
+            if (end != text && !*end && mm >= 150 && mm <= 400) {
+                physical_width = (uint32_t)mm;
+                altscreen_log("PHASE=ALT111_PHYSICAL_SIZE width_mm=%u source=cluster-physical-width.txt",
+                              physical_width);
+            } else {
+                altscreen_log("ALT111_PHYSICAL_SIZE ignored value=%s reason=invalid", text);
+            }
+        }
+    }
     physical_height = d->height_mm;
     if (!physical_height) {
         uint32_t scaled = physical_width * d->height_pixels;
@@ -1178,6 +1205,8 @@ static void alt111_event_response(int status, void *response, void *opaque) {
                 ctx->receiver, ctx->stream, ctx->generation,
                 ctx->event_seq, ctx->event_value,
                 status, response != NULL);
+        else if (ctx->event_kind == ALT111_EVENT_NIGHT_MODE)
+            ;   /* logged above; nothing waits for it */
         else if (ctx->event_kind == ALT111_EVENT_RECOVERY_KEYFRAME)
             p1404_cockpit_native_recovery_result(
                 ctx->receiver, ctx->stream, ctx->generation,
@@ -1408,6 +1437,146 @@ done:
         alt111_event_context_release(ctx);
     }
     return rc;
+}
+
+/*
+ * Day/night sync (MMI-Cockpit-Carplay fork; ported from PR #14 on the hybrid).
+ *
+ * The head unit hands the phone its day/night mode once at connect, as the "nightMode"
+ * property (AirPlayReceiverServer/SessionPlatformCopyProperty below records it); later
+ * changes come from the light switch. Google Maps nevertheless starts the cluster map in its
+ * other theme, and a repeat of the current mode is a no-op for iOS: only a real change makes
+ * it re-evaluate, which is why toggling the lights fixed it. So once the cluster video runs,
+ * send the opposite mode and, 300 ms later, the real one, in the stock command shape
+ * {type: setNightMode, params: {nightMode: <bool>}}; again 3 s later, because the phone
+ * builds the cluster UI a moment after the first frame. Nothing is sent when no mode was
+ * seen; state/night-sync-off turns it off.
+ */
+static volatile int g_alt_night = -1;   /* -1 unknown, 0 day, 1 night */
+static volatile int g_alt_night_busy;
+static uint32_t g_alt_night_seq;
+
+static const void *alt_cf_bool(int value) {
+    const void *const *ref = (const void *const *)dlsym(
+        RTLD_DEFAULT, value ? "kCFLBooleanTrue" : "kCFLBooleanFalse");
+    return ref ? *ref : NULL;
+}
+
+static void alt_note_night_property(const char *where, const void *value) {
+    int night;
+    if (!value) return;
+    if (value == alt_cf_bool(1)) night = 1;
+    else if (value == alt_cf_bool(0)) night = 0;
+    else {
+        altscreen_log("WARN PHASE=NIGHT_MODE_PROPERTY source=%s value_not_cf_boolean=1", where);
+        return;
+    }
+    __sync_lock_test_and_set(&g_alt_night, night);
+    altscreen_log("PHASE=NIGHT_MODE_PROPERTY source=%s mode=%s", where, night ? "night" : "day");
+}
+
+static int alt_send_cluster_night(void *receiver, void *stream, uint32_t generation,
+                                  int night) {
+    airplay_send_command_fn send_command;
+    struct alt111_event_context *ctx = NULL;
+    cf_obj command = NULL, params = NULL, type = NULL;
+    const void *flag = alt_cf_bool(night);
+    uint32_t seq = __sync_add_and_fetch(&g_alt_night_seq, 1u);
+    int rc = -1;
+
+    send_command = (airplay_send_command_fn)
+        p1404_stock_symbol_named("AirPlayReceiverSessionSendCommand");
+    if (!send_command || !flag || !cf_dict_create_mutable || !cf_str_new ||
+        !cf_dict_set || !cf_release)
+        goto done;
+    command = cf_dict_create_mutable(NULL, 0, NULL, NULL, NULL);
+    params = cf_dict_create_mutable(NULL, 0, NULL, NULL, NULL);
+    type = cf_str_new("setNightMode", -1);
+    if (!command || !params || !type) goto done;
+    if (!cf_dict_set_cstr_obj(command, "type", type) ||
+        !cf_dict_set_cstr_obj(params, "nightMode", (cf_obj)flag) ||
+        !cf_dict_set_cstr_obj(command, "params", params))
+        goto done;
+
+    ctx = (struct alt111_event_context *)calloc(1u, sizeof(*ctx));
+    if (!ctx) goto done;
+    ctx->receiver = receiver;
+    ctx->stream = stream;
+    ctx->generation = generation;
+    ctx->event_kind = ALT111_EVENT_NIGHT_MODE;
+    ctx->event_value = night;
+    ctx->event_seq = seq;
+    ctx->refs = 2;
+
+    if (!p1404_cockpit_native_command_acquire(receiver, stream, generation)) goto done;
+    rc = guarded_command_submit(send_command, receiver, command, ctx);
+    alt_airplay_release_object(receiver);
+    if (rc == 0 || __sync_fetch_and_add(&ctx->callback_called, 0)) {
+        alt111_event_context_release(ctx);
+        ctx = NULL;
+    }
+
+done:
+    cf_release_safe(type);
+    cf_release_safe(params);
+    cf_release_safe(command);
+    if (ctx) {
+        alt111_event_context_release(ctx);
+        alt111_event_context_release(ctx);
+    }
+    return rc;
+}
+
+struct alt_night_job { void *receiver; void *stream; uint32_t generation; };
+extern int pthread_detach(pthread_t thread);
+
+static void *alt_night_sync_thread(void *arg) {
+    struct alt_night_job job = *(struct alt_night_job *)arg;
+    static const unsigned delays_ms[2] = { 1000u, 2700u };   /* ~1 s and ~4 s after the frame */
+    unsigned pass;
+    free(arg);
+    for (pass = 0; pass < 2u; ++pass) {
+        int night, rc_kick, rc_real;
+        usleep(delays_ms[pass] * 1000u);
+        FILE *off = fopen(ALT_CARD_STATE_DIR "night-sync-off", "r");
+        if (off) {
+            fclose(off);
+            altscreen_log("PHASE=NIGHT_SYNC skipped=1 reason=night-sync-off");
+            break;
+        }
+        night = __sync_fetch_and_add(&g_alt_night, 0);
+        if (night < 0) {
+            altscreen_log("WARN PHASE=NIGHT_SYNC skipped=1 reason=no_night_mode_seen pass=%u", pass + 1u);
+            break;
+        }
+        rc_kick = alt_send_cluster_night(job.receiver, job.stream, job.generation, !night);
+        usleep(300000u);
+        rc_real = alt_send_cluster_night(job.receiver, job.stream, job.generation, night);
+        altscreen_log("PHASE=NIGHT_SYNC pass=%u mode=%s kick_rc=%d real_rc=%d generation=%u",
+                      pass + 1u, night ? "night" : "day", rc_kick, rc_real, job.generation);
+        if (rc_real != 0) break;
+    }
+    __sync_lock_test_and_set(&g_alt_night_busy, 0);
+    return NULL;
+}
+
+void alt_night_sync_schedule(void *receiver, void *stream, uint32_t generation) {
+    struct alt_night_job *job;
+    pthread_t thread;
+    if (!receiver || !stream || !generation) return;
+    if (__sync_lock_test_and_set(&g_alt_night_busy, 1)) return;   /* one at a time */
+    job = (struct alt_night_job *)calloc(1u, sizeof(*job));
+    if (!job) { __sync_lock_test_and_set(&g_alt_night_busy, 0); return; }
+    job->receiver = receiver;
+    job->stream = stream;
+    job->generation = generation;
+    if (pthread_create(&thread, NULL, alt_night_sync_thread, job) != 0) {
+        free(job);
+        __sync_lock_test_and_set(&g_alt_night_busy, 0);
+        altscreen_log("WARN PHASE=NIGHT_SYNC thread_start_failed=1");
+        return;
+    }
+    pthread_detach(thread);
 }
 
 int alt_send_cluster_zoom(void *receiver, void *stream,
@@ -2032,6 +2201,8 @@ void *AirPlayReceiverServerPlatformCopyProperty(void *a0, unsigned a1, void *a2,
     r = real_server_copy(a0, a1, a2, a3, a4);
     if (!p1404_identity_ok) return r;
     obs_call("ServerPlatformCopyProperty", a0, lr, (long)r);
+    if (name_is((cf_obj)a2, "nightMode", scratch, sizeof(scratch)))
+        alt_note_night_property("server", r);
     if (name_is((cf_obj)a2, "features", scratch, sizeof(scratch))) {
         int64_t stock = 0;
         if (alt_cf_int64(r, &stock))
@@ -2068,6 +2239,8 @@ void *AirPlayReceiverSessionPlatformCopyProperty(void *a0, unsigned a1, void *a2
     r = real_session_copy(a0, a1, a2, a3, a4);
     if (!p1404_identity_ok) return r;
     obs_call("SessionPlatformCopyProperty", a0, lr, (long)r);
+    if (name_is((cf_obj)a2, "nightMode", scratch, sizeof(scratch)))
+        alt_note_night_property("session", r);
     if (name_is((cf_obj)a2, "displays", scratch, sizeof(scratch)) && r) {
         alt_note_displays_container("info-stock", r);
         if (alt_runtime_negotiation_ready("session-displays") &&

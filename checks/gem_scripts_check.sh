@@ -67,6 +67,15 @@ expect_file "$STATE/card-small-hide" hide
 run 0 "CARD_SMALL=keep applies=NEXT_VIEW" "$S/card_small_keep.sh"
 expect_file "$STATE/card-small-hide" -
 
+run 0 "CLUSTER_UI_SIZE=compact width_mm=292" "$S/cluster_ui_size_compact.sh"
+expect_file "$STATE/cluster-physical-width.txt" 292
+run 0 "CLUSTER_UI_SIZE=v38 width_mm=200" "$S/cluster_ui_size_v38.sh"
+expect_file "$STATE/cluster-physical-width.txt" -
+run 0 "NIGHT_SYNC=off" "$S/night_sync_off.sh"
+expect_file "$STATE/night-sync-off" off
+run 0 "NIGHT_SYNC=on" "$S/night_sync_on.sh"
+expect_file "$STATE/night-sync-off" -
+
 run 0 "RGI_BACKING=off applies=LIVE" "$S/rgi_backing_off.sh"
 expect_file "$STATE/rgi-backing-off" off
 run 0 "RGI_BACKING=on applies=LIVE" "$S/rgi_backing_on.sh"

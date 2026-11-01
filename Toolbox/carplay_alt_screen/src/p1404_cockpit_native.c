@@ -3054,9 +3054,11 @@ int p1404_hook_cscreen_render(void *self, unsigned char *buffer) {
     }
     native_unlock();
 
-    if (first_real_post)
+    if (first_real_post) {
         altscreen_log("PHASE=NATIVE_111_FIRST_REAL_FRAME receiver=%p stream=%p renderer=%p generation=%u result=POSTED geometry=%ux%u route_gate=eligible",
                       receiver, stream, self, generation, config_width, config_height);
+        alt_night_sync_schedule(receiver, stream, generation);   /* MMI-Cockpit-Carplay fork */
+    }
 
     memset(&snap, 0, sizeof(snap));
     if (!alt_state_snapshot(receiver, 1, &snap) ||
