@@ -474,12 +474,37 @@ static const unsigned long long kVeilMaxHoldUs = 450000ULL;
 static const unsigned long long kVeilFadeUs = 150000ULL;
 static const unsigned kVeilMinFrames = 2u;
 
+/*
+ * MMI-Cockpit-Carplay fork: a second veil for VIEW in the phone-card profile with the card
+ * hidden in SMALL (state/card-small-hide). There every VIEW press makes the phone rebuild the
+ * cluster UI for the other context, and its first frames show the map jumping and a grey
+ * frame. Fade the last frame out, keep black until the phone has sent enough fresh frames
+ * for the rebuilt UI, then fade in. The offset veil above keeps upstream's timings.
+ */
+struct VeilTiming {
+    const char *kind;
+    unsigned long long fade_out_us, min_hold_us, max_hold_us, fade_in_us;
+    unsigned min_frames;
+};
+static const VeilTiming kOffsetVeil = {
+    "offset", 0ULL, kVeilMinHoldUs, kVeilMaxHoldUs, kVeilFadeUs, kVeilMinFrames };
+static const VeilTiming kCardVeil = {
+    "card-context", 120000ULL, 300000ULL, 1500000ULL, 220000ULL, 10u };
+
+static bool state_file_present(const char *name) {
+    char path[160];
+    snprintf(path, sizeof(path), "/mnt/app/root/carplay-altscreen/state/%s", name);
+    return access(path, F_OK) == 0;
+}
+
 /* Without new frames the fade advances on the last texture at ~60 Hz. */
 static const unsigned long long kVeilIdleRedrawUs = 16000ULL;
 
 struct PlacementVeil {
     bool active;
+    bool fading_out;
     bool fading;
+    VeilTiming timing;
     unsigned long long start_us;
     unsigned long long fade_start_us;
     unsigned long long last_present_us;
@@ -490,23 +515,27 @@ static PlacementVeil g_veil;
 static void begin_placement_veil(ClusterVideoDisplay &display,
                                  const char *reason,
                                  const OemMapPlacement &from,
-                                 const OemMapPlacement &to) {
+                                 const OemMapPlacement &to,
+                                 const VeilTiming &timing = kOffsetVeil) {
     const bool restarted = g_veil.active;
     g_veil.active = true;
+    g_veil.timing = timing;
+    /* A restart during the fade-out keeps fading from where it is. */
+    g_veil.fading_out = timing.fade_out_us != 0ULL && !(restarted && !g_veil.fading_out);
     g_veil.fading = false;
     g_veil.start_us = monotonic_us();
     g_veil.fade_start_us = 0;
     g_veil.last_present_us = g_veil.start_us;
     g_veil.frames = 0;
-    const bool black = display.present_faded(0.0f);
+    const bool black = g_veil.fading_out ? false : display.present_faded(0.0f);
     fprintf(stderr,
-            "direct111: PHASE=OEM_MAP_VEIL_BEGIN reason=%s view=%s layout=%s "
+            "direct111: PHASE=OEM_MAP_VEIL_BEGIN reason=%s kind=%s view=%s layout=%s "
             "renderer_offset=%d,%d->%d,%d restarted=%d black_presented=%d "
-            "min_hold_ms=%llu max_hold_ms=%llu fade_ms=%llu min_frames=%u\n",
-            reason ? reason : "poll", to.view, to.layout,
+            "fade_out_ms=%llu min_hold_ms=%llu max_hold_ms=%llu fade_ms=%llu min_frames=%u\n",
+            reason ? reason : "poll", timing.kind, to.view, to.layout,
             from.dx, from.dy, to.dx, to.dy, restarted ? 1 : 0, black ? 1 : 0,
-            kVeilMinHoldUs / 1000ULL, kVeilMaxHoldUs / 1000ULL,
-            kVeilFadeUs / 1000ULL, kVeilMinFrames);
+            timing.fade_out_us / 1000ULL, timing.min_hold_us / 1000ULL,
+            timing.max_hold_us / 1000ULL, timing.fade_in_us / 1000ULL, timing.min_frames);
 }
 
 /* frame == 0 is an idle poll.  Returns false only when presenting failed. */
@@ -515,14 +544,37 @@ static bool present_through_veil(ClusterVideoDisplay &display,
     if (!g_veil.active)
         return frame ? display.present_frame(*frame) : true;
 
+    const VeilTiming &timing = g_veil.timing;
+    if (g_veil.fading_out) {
+        /* Fade the frame on screen out; frames arriving now belong to the rebuild and are
+         * dropped (not uploaded), so the last good texture fades. */
+        const unsigned long long t = monotonic_us();
+        const unsigned long long out =
+            t >= g_veil.start_us ? t - g_veil.start_us : timing.fade_out_us;
+        if (out < timing.fade_out_us) {
+            if (!frame && t >= g_veil.last_present_us &&
+                t - g_veil.last_present_us < kVeilIdleRedrawUs)
+                return true;
+            g_veil.last_present_us = t;
+            return display.present_faded(1.0f - (float)out / (float)timing.fade_out_us);
+        }
+        g_veil.fading_out = false;
+        g_veil.start_us = t;               /* the hold starts at black */
+        g_veil.last_present_us = t;
+        g_veil.frames = 0;
+        fprintf(stderr, "direct111: PHASE=OEM_MAP_VEIL_BLACK kind=%s fade_out_ms=%llu\n",
+                timing.kind, out / 1000ULL);
+        return display.present_faded(0.0f);
+    }
+
     const unsigned long long now = monotonic_us();
     const unsigned long long held =
-        now >= g_veil.start_us ? now - g_veil.start_us : kVeilMaxHoldUs;
+        now >= g_veil.start_us ? now - g_veil.start_us : timing.max_hold_us;
     if (frame) ++g_veil.frames;
     if (!g_veil.fading) {
-        const bool ready = held >= kVeilMinHoldUs &&
-                           g_veil.frames >= kVeilMinFrames;
-        if (ready || held >= kVeilMaxHoldUs) {
+        const bool ready = held >= timing.min_hold_us &&
+                           g_veil.frames >= timing.min_frames;
+        if (ready || held >= timing.max_hold_us) {
             g_veil.fading = true;
             g_veil.fade_start_us = now;
             fprintf(stderr,
@@ -537,14 +589,14 @@ static bool present_through_veil(ClusterVideoDisplay &display,
     float opacity = 0.0f;
     if (g_veil.fading) {
         const unsigned long long faded =
-            now >= g_veil.fade_start_us ? now - g_veil.fade_start_us : kVeilFadeUs;
-        if (!frame && faded < kVeilFadeUs &&
+            now >= g_veil.fade_start_us ? now - g_veil.fade_start_us : timing.fade_in_us;
+        if (!frame && faded < timing.fade_in_us &&
             now >= g_veil.last_present_us &&
             now - g_veil.last_present_us < kVeilIdleRedrawUs)
             return true;
-        opacity = faded >= kVeilFadeUs
-                      ? 1.0f : (float)faded / (float)kVeilFadeUs;
-        if (faded >= kVeilFadeUs) {
+        opacity = faded >= timing.fade_in_us
+                      ? 1.0f : (float)faded / (float)timing.fade_in_us;
+        if (faded >= timing.fade_in_us) {
             g_veil.active = false;
             fprintf(stderr,
                     "direct111: PHASE=OEM_MAP_VEIL_END total_ms=%llu frames=%u\n",
@@ -634,6 +686,11 @@ static bool reconcile_oem_map_placement(ClusterVideoDisplay &display,
 
     const bool offset_changed = have_previous &&
         (previous.dx != p.dx || previous.dy != p.dy);
+    /* MMI-Cockpit-Carplay fork: VIEW in the card profile with the card hidden in SMALL
+     * switches the phone's cluster context, i.e. a full UI rebuild (kCardVeil). */
+    const bool card_rebuild = have_previous && p.recognized &&
+        strcmp(previous.view, p.view) != 0 &&
+        state_file_present("card.enabled") && state_file_present("card-small-hide");
     const OemMapPlacement from = previous;
     previous = p;
     have_previous = true;
@@ -646,6 +703,10 @@ static bool reconcile_oem_map_placement(ClusterVideoDisplay &display,
      * active veil owns presentation until it has faded in.
      */
     if (applied && redraw_last_frame && display.first_frame_presented()) {
+        if (card_rebuild) {
+            begin_placement_veil(display, reason, from, p, kCardVeil);
+            return applied;
+        }
         if (offset_changed) {
             begin_placement_veil(display, reason, from, p);
             return applied;
